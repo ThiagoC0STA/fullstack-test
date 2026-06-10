@@ -10,3 +10,16 @@ export interface MessageEnvelope<TType extends string, TPayload> {
   occurredAt: string;
   payload: TPayload;
 }
+
+export function createMessage<TType extends string, TPayload>(
+  type: TType,
+  payload: TPayload,
+  now: Date,
+): MessageEnvelope<TType, TPayload> {
+  return {
+    messageId: crypto.randomUUID(),
+    type,
+    occurredAt: now.toISOString(),
+    payload,
+  };
+}

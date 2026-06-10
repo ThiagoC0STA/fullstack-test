@@ -3,11 +3,14 @@ import type { CentsString, CreditReason, DebitReason } from "@crash/contracts";
 
 export type LedgerEntryType = "credit" | "debit";
 
+/** Ledger reasons include wallet-internal events the broker never sees. */
+export type LedgerReason = DebitReason | CreditReason | "initial_grant";
+
 interface LedgerEntryProps {
   id: string;
   walletId: string;
   type: LedgerEntryType;
-  reason: DebitReason | CreditReason;
+  reason: LedgerReason;
   amountCents: CentsString;
   balanceAfterCents: CentsString;
   betId: string | null;
@@ -26,7 +29,7 @@ export class LedgerEntry {
   id: string;
   walletId: string;
   type: LedgerEntryType;
-  reason: DebitReason | CreditReason;
+  reason: LedgerReason;
   amountCents: CentsString;
   balanceAfterCents: CentsString;
   betId: string | null;
