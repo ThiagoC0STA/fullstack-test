@@ -33,8 +33,8 @@ export function LiveBets() {
   const visible = bets.filter((bet) => bet.status !== "rejected");
 
   return (
-    <Card className="h-full">
-      <CardHeader>
+    <Card className="flex flex-col overflow-hidden lg:max-h-[calc(100dvh-6rem)]">
+      <CardHeader className="shrink-0">
         <CardTitle>Apostas da rodada</CardTitle>
         <span className="font-mono text-xs text-ink-3">{visible.length}</span>
       </CardHeader>
@@ -43,7 +43,7 @@ export function LiveBets() {
           Ninguém apostou nesta rodada
         </p>
       ) : (
-        <ul className="divide-y divide-edge">
+        <ul className="min-h-0 flex-1 divide-y divide-edge overflow-y-auto">
           {visible.map((bet) => {
             const mine = bet.playerId === playerId;
             return (
