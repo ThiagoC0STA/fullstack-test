@@ -39,6 +39,9 @@ Zero passos manuais: realm do Keycloak importado no boot (usuário de teste com 
 - ✅ **Efeitos sonoros** sintetizados via WebAudio (zero assets de áudio)
 - ✅ **Fórmula da curva exibida na UI** (`m(t) = ⌊100·e^(0.00006t)⌋`)
 - ✅ **Verificação provably fair no navegador** via WebCrypto (clique em qualquer rodada do histórico)
+- ✅ **CI pipeline** (GitHub Actions: typecheck + testes + build a cada push)
+- ✅ **Rate limiting** por IP no Kong
+- ✅ **Playwright** E2E de browser (login Keycloak → aposta → cashout no Chromium real)
 
 ## Arquitetura
 
@@ -117,8 +120,9 @@ POST /games/bet
 cd packages/contracts && bun test tests    # dinheiro (BigInt) + curva
 cd services/games && bun test tests/unit   # Round/Bet, engine, saga, provably fair
 cd services/wallets && bun test tests/unit # Wallet, ledger, use cases exactly-once
-cd frontend && bun test tests              # verificação WebCrypto (mesmos snapshots do backend)
-cd services/games && bun test tests/e2e    # requer docker:up
+cd frontend && bun test tests              # store + verificação WebCrypto (snapshots do backend)
+cd services/games && bun test tests/e2e    # gameplay/saga via Kong+Keycloak+RabbitMQ (requer docker:up)
+cd frontend && bun run test:e2e            # Playwright: login -> aposta -> cashout no browser (requer docker:up)
 ```
 
 Cobertura de comportamento: transições e violações de invariantes do Round, cashout exato ao centavo, crash instantâneo, dedup de redelivery (exactly-once), compensação de refund, recovery pós-restart, encadeamento da hash chain, snapshots congelados do algoritmo.
