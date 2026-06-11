@@ -10,6 +10,7 @@ import {
   call,
   ensureStackIsUp,
   getAccessToken,
+  myBets,
   myWallet,
   publishWalletOperation,
   waitFor,
@@ -127,6 +128,34 @@ describe("crash game E2E", () => {
       });
       expect(second.status).toBe(409);
       expect(second.error).toContain("already");
+    },
+    { timeout: 300_000 },
+  );
+
+  test(
+    "two simultaneous bets settle to exactly one accepted, one rejected",
+    async () => {
+      await ready();
+      await waitForFreshBettingRound();
+
+      // fire both at once: the in-memory aggregate guard and the partial
+      // unique index (round_id, player_id) WHERE status <> 'rejected'
+      // must let exactly one through under a real race
+      const [a, b] = await Promise.all([
+        call<BetView>("/games/bet", { method: "POST", token, body: { amountCents: "300" } }),
+        call<BetView>("/games/bet", { method: "POST", token, body: { amountCents: "300" } }),
+      ]);
+
+      const statuses = [a.status, b.status].sort((x, y) => x - y);
+      expect(statuses).toEqual([201, 409]);
+
+      const bets = await myBets(token);
+      const inThisRound = bets.filter(
+        (placed) => placed.amountCents === "300" && placed.status !== "rejected",
+      );
+      // never two live bets for the same player in one round
+      const roundIds = new Set(inThisRound.map((placed) => placed.roundId));
+      expect(roundIds.size).toBe(inThisRound.length);
     },
     { timeout: 300_000 },
   );
