@@ -2,25 +2,24 @@
 
 import { useState } from "react";
 import { ShieldCheck } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import { formatMultiplier } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useGameStore } from "@/stores/game-store";
 import { VerifyDialog } from "./verify-dialog";
 
-function chipClass(crashPointHundredths: number): string {
+function chipColor(crashPointHundredths: number): string {
   if (crashPointHundredths >= 1000) {
-    return "text-gold border-gold/40 bg-gold/10";
+    return "text-gold";
   }
   if (crashPointHundredths >= 200) {
-    return "text-neon border-neon/40 bg-neon/10";
+    return "text-accent";
   }
-  return "text-danger border-danger/40 bg-danger/10";
+  return "text-danger";
 }
 
 /**
- * Last crash points. Every chip opens the provably fair verification
- * for that round - including an independent in-browser recompute.
+ * Last crash points as a quiet strip. Every chip opens the provably
+ * fair audit for that round, including an in-browser recompute.
  */
 export function RoundHistory() {
   const history = useGameStore((state) => state.history);
@@ -28,28 +27,30 @@ export function RoundHistory() {
 
   return (
     <>
-      <Card>
-        <CardContent className="flex items-center gap-2 overflow-x-auto py-3">
-          <ShieldCheck className="size-4 shrink-0 text-ink-dim" aria-hidden />
-          {history.length === 0 && (
-            <span className="text-xs text-ink-dim">Histórico chegando…</span>
-          )}
-          {history.map((round) => (
-            <button
-              key={round.roundId}
-              type="button"
-              onClick={() => setSelectedRoundId(round.roundId)}
-              title="Clique para verificar (provably fair)"
-              className={cn(
-                "shrink-0 cursor-pointer rounded-md border px-2.5 py-1 font-mono text-xs font-semibold transition-transform hover:scale-105",
-                chipClass(round.crashPointHundredths),
-              )}
-            >
-              {formatMultiplier(round.crashPointHundredths)}
-            </button>
-          ))}
-        </CardContent>
-      </Card>
+      <div className="flex items-center gap-1.5 overflow-x-auto">
+        <ShieldCheck
+          className="size-3.5 shrink-0 text-ink-3"
+          aria-label="Histórico verificável (provably fair)"
+        />
+        {history.length === 0 && (
+          <span className="text-xs text-ink-3">Histórico chegando…</span>
+        )}
+        {history.map((round) => (
+          <button
+            key={round.roundId}
+            type="button"
+            onClick={() => setSelectedRoundId(round.roundId)}
+            title="Verificar rodada (provably fair)"
+            className={cn(
+              "shrink-0 cursor-pointer rounded border border-edge px-2 py-1 font-mono text-[11px] font-medium",
+              "transition-colors duration-150 ease-out hover:border-edge-strong",
+              chipColor(round.crashPointHundredths),
+            )}
+          >
+            {formatMultiplier(round.crashPointHundredths)}
+          </button>
+        ))}
+      </div>
       {selectedRoundId && (
         <VerifyDialog
           roundId={selectedRoundId}

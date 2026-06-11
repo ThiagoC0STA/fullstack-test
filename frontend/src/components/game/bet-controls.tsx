@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { Check, TrendingDown } from "lucide-react";
 import {
   BET_LIMITS,
   calculatePayoutCents,
@@ -54,7 +55,7 @@ export function BetControls() {
 
   const placeBet = useMutation({
     mutationFn: (amountCents: string) => api.placeBet(amountCents),
-    onSuccess: () => toast.success("Aposta enviada, debitando da carteira…"),
+    onSuccess: () => toast.success("Aposta enviada, debitando da carteira"),
     onError: (error) =>
       toast.error(error instanceof ApiError ? error.message : "Falha ao apostar"),
   });
@@ -63,7 +64,7 @@ export function BetControls() {
     mutationFn: () => api.cashOut(),
     onSuccess: (bet) =>
       toast.success(
-        `Sacou em ${formatMultiplier(bet.cashoutMultiplierHundredths ?? 100)} — ${formatMoney(bet.payoutCents ?? "0")}`,
+        `Sacou ${formatMoney(bet.payoutCents ?? "0")} em ${formatMultiplier(bet.cashoutMultiplierHundredths ?? 100)}`,
       ),
     onError: (error) =>
       toast.error(error instanceof ApiError ? error.message : "Falha no cashout"),
@@ -110,11 +111,9 @@ export function BetControls() {
   if (authStatus !== "authenticated") {
     return (
       <Card>
-        <CardContent className="flex flex-col items-center gap-3 py-8">
-          <p className="text-sm text-ink-dim">Entre com sua conta para apostar</p>
-          <Button size="lg" onClick={() => void login()}>
-            Entrar para apostar
-          </Button>
+        <CardContent className="flex flex-col items-center gap-4 py-10">
+          <p className="text-[13px] text-ink-2">Entre com sua conta para apostar</p>
+          <Button onClick={() => void login()}>Entrar para apostar</Button>
         </CardContent>
       </Card>
     );
@@ -124,106 +123,117 @@ export function BetControls() {
     ? calculatePayoutCents(myBet.amountCents, Math.max(100, multiplier))
     : null;
 
+  const canEditBet = !myBet && phase === "betting";
+
   return (
     <Card>
       <CardHeader>
         <CardTitle>Sua aposta</CardTitle>
         {countdown !== null && (
-          <span className="font-mono text-xs text-neon">
+          <span className="font-mono text-xs text-accent">
             fecha em {(countdown / 1000).toFixed(1)}s
           </span>
         )}
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <label className="text-[11px] uppercase tracking-wide text-ink-dim">
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-2 items-end gap-3 md:grid-cols-[200px_160px_1fr]">
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-ink-2">
               Valor ($)
             </label>
             <Input
               inputMode="decimal"
               value={amount}
-              disabled={Boolean(myBet) || phase !== "betting"}
+              disabled={!canEditBet}
               onChange={(event) => setAmount(event.target.value)}
             />
           </div>
-          <div className="space-y-1">
-            <label className="text-[11px] uppercase tracking-wide text-ink-dim">
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-ink-2">
               Auto-saque (×)
             </label>
             <Input
               inputMode="decimal"
-              placeholder="ex: 2.00"
+              placeholder="2.00"
               value={autoCashout}
               onChange={(event) => setAutoCashout(event.target.value)}
             />
           </div>
+
+          <div className="col-span-2 md:col-span-1 md:justify-self-end">
+            {!myBet && (
+              <Button
+                className="w-full md:min-w-44"
+                disabled={phase !== "betting" || placeBet.isPending}
+                onClick={submitBet}
+              >
+                {phase === "betting"
+                  ? placeBet.isPending
+                    ? "Enviando…"
+                    : "Apostar"
+                  : "Aguardando rodada…"}
+              </Button>
+            )}
+            {myBet?.status === "pending_debit" && (
+              <Button className="w-full md:min-w-44" variant="outline" disabled>
+                Debitando…
+              </Button>
+            )}
+            {myBet?.status === "active" && phase === "running" && (
+              <Button
+                className="w-full font-mono md:min-w-44"
+                disabled={cashOut.isPending}
+                onClick={() => cashOut.mutate()}
+              >
+                Sacar {potential ? formatMoney(potential) : ""}
+              </Button>
+            )}
+            {myBet?.status === "active" && phase !== "running" && (
+              <Button className="w-full md:min-w-44" variant="outline" disabled>
+                Aguardando rodada…
+              </Button>
+            )}
+            {(myBet?.status === "cashed_out" || myBet?.status === "lost") && (
+              <Button className="w-full md:min-w-44" variant="outline" disabled>
+                Próxima rodada…
+              </Button>
+            )}
+          </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {QUICK_AMOUNTS.map((quick) => (
-            <Button
-              key={quick}
-              variant="outline"
-              size="sm"
-              disabled={Boolean(myBet) || phase !== "betting"}
-              onClick={() => setAmount(quick)}
-            >
-              {quick}
-            </Button>
-          ))}
-        </div>
-
-        {!myBet && (
-          <Button
-            size="lg"
-            className="w-full"
-            disabled={phase !== "betting" || placeBet.isPending}
-            onClick={submitBet}
-          >
-            {phase === "betting"
-              ? placeBet.isPending
-                ? "Enviando…"
-                : "Apostar"
-              : "Aguardando próxima rodada…"}
-          </Button>
-        )}
-
-        {myBet?.status === "pending_debit" && (
-          <Button size="lg" className="w-full" disabled variant="outline">
-            Debitando {formatMoney(myBet.amountCents)} da carteira…
-          </Button>
-        )}
-
-        {myBet?.status === "active" && phase === "running" && (
-          <Button
-            size="lg"
-            variant="default"
-            className="w-full animate-pulse-glow"
-            disabled={cashOut.isPending}
-            onClick={() => cashOut.mutate()}
-          >
-            Sacar {potential ? formatMoney(potential) : ""} @{" "}
-            {formatMultiplier(multiplier)}
-          </Button>
+        {canEditBet && (
+          <div className="flex flex-wrap gap-1.5">
+            {QUICK_AMOUNTS.map((quick) => (
+              <Button
+                key={quick}
+                variant="ghost"
+                size="sm"
+                className="font-mono"
+                onClick={() => setAmount(quick)}
+              >
+                {quick}
+              </Button>
+            ))}
+          </div>
         )}
 
         {myBet?.status === "active" && phase === "betting" && (
-          <p className="rounded-lg bg-neon/10 p-3 text-center text-sm text-neon">
-            Aposta de {formatMoney(myBet.amountCents)} confirmada — boa sorte!
+          <p className="flex items-center gap-1.5 text-[13px] text-accent">
+            <Check className="size-3.5" aria-hidden />
+            Aposta de {formatMoney(myBet.amountCents)} confirmada
           </p>
         )}
-
         {myBet?.status === "cashed_out" && (
-          <p className="rounded-lg bg-neon/10 p-3 text-center text-sm font-semibold text-neon">
-            Você sacou {formatMoney(myBet.payoutCents ?? "0")} em{" "}
+          <p className="flex items-center gap-1.5 text-[13px] text-accent">
+            <Check className="size-3.5" aria-hidden />
+            Sacou {formatMoney(myBet.payoutCents ?? "0")} em{" "}
             {formatMultiplier(myBet.cashoutMultiplierHundredths ?? 100)}
           </p>
         )}
-
         {myBet?.status === "lost" && (
-          <p className="rounded-lg bg-danger/10 p-3 text-center text-sm font-semibold text-danger">
-            Crashou… {formatMoney(myBet.amountCents)} perdidos. Próxima!
+          <p className="flex items-center gap-1.5 text-[13px] text-danger">
+            <TrendingDown className="size-3.5" aria-hidden />
+            Crashou — {formatMoney(myBet.amountCents)} perdidos
           </p>
         )}
       </CardContent>

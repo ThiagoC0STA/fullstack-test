@@ -5,14 +5,23 @@ import { multiplierAtElapsedMs, multiplierToDecimal } from "@crash/contracts";
 import { useGameStore } from "@/stores/game-store";
 
 const COLORS = {
-  grid: "rgba(28, 39, 64, 0.6)",
-  neon: "#00ff9d",
-  neonSoft: "rgba(0, 255, 157, 0.25)",
-  danger: "#ff3b5c",
-  ink: "#e8edf7",
-  inkDim: "#8b97b0",
-  gold: "#ffc857",
-};
+  grid: "#1d1d1d",
+  axis: "#2c2c2c",
+  label: "#5d5d5d",
+  ink: "#ededed",
+  ink2: "#8f8f8f",
+  accent: "#3ecf8e",
+  accentArea: "rgba(62, 207, 142, 0.10)",
+  danger: "#e5484d",
+  dangerArea: "rgba(229, 72, 77, 0.08)",
+} as const;
+
+const PAD = { left: 56, right: 20, top: 32, bottom: 36 } as const;
+const TICK_CANDIDATES = [
+  110, 120, 130, 150, 175, 200, 250, 300, 400, 500, 700, 1000, 1500, 2000,
+  3000, 5000, 10000, 20000, 50000, 100000, 500000, 1000000,
+];
+const X_STEPS_SECONDS = [1, 2, 5, 10, 15, 30, 60, 120];
 
 interface Particle {
   x: number;
@@ -22,11 +31,44 @@ interface Particle {
   life: number;
 }
 
+let cachedMonoFamily: string | null = null;
+
+function monoFamily(): string {
+  if (!cachedMonoFamily) {
+    const value = getComputedStyle(document.documentElement)
+      .getPropertyValue("--font-geist-mono")
+      .trim();
+    cachedMonoFamily = value || "ui-monospace, monospace";
+  }
+  return cachedMonoFamily;
+}
+
+function mono(size: number, weight = 500): string {
+  return `${weight} ${size}px ${monoFamily()}`;
+}
+
+/** Up to 4 "nice" multiplier gridlines inside (1.00x, max]. */
+function multiplierTicks(maxMultiplier: number): number[] {
+  const inRange = TICK_CANDIDATES.filter((c) => c > 100 && c <= maxMultiplier);
+  if (inRange.length <= 4) {
+    return inRange;
+  }
+  const picked = new Set<number>();
+  for (let i = 0; i < 4; i++) {
+    picked.add(inRange[Math.round((i * (inRange.length - 1)) / 3)] as number);
+  }
+  return [...picked];
+}
+
+function secondsStep(windowSeconds: number): number {
+  return X_STEPS_SECONDS.find((step) => windowSeconds / step <= 5) ?? 300;
+}
+
 /**
- * The crash curve, rendered on canvas at the display refresh rate.
- * State is read imperatively from the store every frame so React never
- * re-renders during the animation; the server stays authoritative for
- * money - this is pure presentation.
+ * The round, rendered like a real market instrument: dynamic axes with
+ * nice multiplier/time ticks, a thin live curve and a typographic
+ * readout. State is read imperatively from the store every frame so
+ * React never re-renders during the animation.
  */
 export function GameChart() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -37,17 +79,17 @@ export function GameChart() {
   useEffect(() => {
     let frame = 0;
 
-    const spawnParticles = (width: number, height: number) => {
+    const spawnParticles = (x: number, y: number) => {
       const particles: Particle[] = [];
-      for (let i = 0; i < 42; i++) {
+      for (let i = 0; i < 24; i++) {
         const angle = Math.random() * Math.PI * 2;
-        const speed = 2 + Math.random() * 5;
+        const speed = 1.5 + Math.random() * 3.5;
         particles.push({
-          x: width * 0.78,
-          y: height * 0.3,
+          x,
+          y,
           vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed - 1.5,
-          life: 1,
+          vy: Math.sin(angle) * speed - 1,
+          life: 0.9,
         });
       }
       particlesRef.current = particles;
@@ -60,11 +102,11 @@ export function GameChart() {
         }
         particle.x += particle.vx;
         particle.y += particle.vy;
-        particle.vy += 0.12;
-        particle.life -= 0.018;
+        particle.vy += 0.1;
+        particle.life -= 0.02;
         ctx.globalAlpha = Math.max(0, particle.life);
-        ctx.fillStyle = Math.random() > 0.4 ? COLORS.danger : COLORS.gold;
-        ctx.fillRect(particle.x, particle.y, 3, 3);
+        ctx.fillStyle = Math.random() > 0.35 ? COLORS.danger : COLORS.ink2;
+        ctx.fillRect(particle.x, particle.y, 2, 2);
       }
       ctx.globalAlpha = 1;
     };
@@ -91,31 +133,43 @@ export function GameChart() {
       const state = useGameStore.getState();
       const now = Date.now() + state.clockSkewMs;
 
-      drawGrid(ctx, width, height);
-
       if (prevPhaseRef.current !== "crashed" && state.phase === "crashed") {
         crashFlashRef.current = 1;
-        spawnParticles(width, height);
       }
       prevPhaseRef.current = state.phase;
 
       if (state.phase === "betting" && state.bettingEndsAtMs) {
-        drawBettingPhase(ctx, width, height, state.bettingEndsAtMs - now, state.seedHash);
+        drawBetting(ctx, width, height, state.bettingEndsAtMs - now, state.seedHash);
       } else if (state.phase === "running" && state.startedAtMs) {
         const elapsed = Math.max(0, now - state.startedAtMs);
-        drawCurve(ctx, width, height, elapsed, multiplierAtElapsedMs(elapsed), false);
+        drawRound(ctx, width, height, elapsed, multiplierAtElapsedMs(elapsed), false);
       } else if (state.phase === "crashed" && state.crashPointHundredths) {
-        const crashElapsed = estimateElapsedFor(state.crashPointHundredths);
-        drawCurve(ctx, width, height, crashElapsed, state.crashPointHundredths, true);
+        const crashElapsed = elapsedForMultiplier(state.crashPointHundredths);
+        const tip = drawRound(
+          ctx,
+          width,
+          height,
+          crashElapsed,
+          state.crashPointHundredths,
+          true,
+        );
+        if (particlesRef.current.length === 0 && crashFlashRef.current === 1 && tip) {
+          spawnParticles(tip[0], tip[1]);
+        }
         drawParticles(ctx);
       } else {
         drawIdle(ctx, width, height);
+        particlesRef.current = [];
+      }
+
+      if (state.phase !== "crashed") {
+        particlesRef.current = [];
       }
 
       if (crashFlashRef.current > 0) {
-        ctx.fillStyle = `rgba(255, 59, 92, ${0.25 * crashFlashRef.current})`;
+        ctx.fillStyle = `rgba(229, 72, 77, ${0.1 * crashFlashRef.current})`;
         ctx.fillRect(0, 0, width, height);
-        crashFlashRef.current = Math.max(0, crashFlashRef.current - 0.04);
+        crashFlashRef.current = Math.max(0, crashFlashRef.current - 0.05);
       }
 
       frame = requestAnimationFrame(draw);
@@ -126,47 +180,30 @@ export function GameChart() {
   }, []);
 
   return (
-    <div className="relative h-[320px] w-full overflow-hidden rounded-2xl border border-border-soft bg-surface-2/60 sm:h-[420px]">
+    <div className="relative h-[380px] w-full overflow-hidden rounded-lg border border-edge bg-surface sm:h-[460px]">
       <canvas ref={canvasRef} className="size-full" />
-      <p className="pointer-events-none absolute bottom-2 left-3 font-mono text-[10px] text-ink-dim/70">
+      <p className="pointer-events-none absolute right-3 bottom-2 font-mono text-[10px] text-ink-3">
         m(t) = ⌊100·e^(0.00006t)⌋
       </p>
     </div>
   );
 }
 
-function estimateElapsedFor(multiplier: number): number {
+function elapsedForMultiplier(multiplier: number): number {
   if (multiplier <= 100) {
     return 0;
   }
   return Math.log(multiplier / 100) / 0.00006;
 }
 
-function drawGrid(ctx: CanvasRenderingContext2D, width: number, height: number) {
-  ctx.strokeStyle = COLORS.grid;
-  ctx.lineWidth = 1;
-  for (let x = 0; x < width; x += 56) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, height);
-    ctx.stroke();
-  }
-  for (let y = 0; y < height; y += 56) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(width, y);
-    ctx.stroke();
-  }
-}
-
 function drawIdle(ctx: CanvasRenderingContext2D, width: number, height: number) {
-  ctx.fillStyle = COLORS.inkDim;
-  ctx.font = "600 16px ui-sans-serif, system-ui";
   ctx.textAlign = "center";
+  ctx.fillStyle = COLORS.ink2;
+  ctx.font = mono(13);
   ctx.fillText("Conectando à mesa…", width / 2, height / 2);
 }
 
-function drawBettingPhase(
+function drawBetting(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
@@ -174,81 +211,117 @@ function drawBettingPhase(
   seedHash: string | null,
 ) {
   const remaining = Math.max(0, remainingMs);
-  const seconds = (remaining / 1000).toFixed(1);
+  const centerY = height / 2;
 
   ctx.textAlign = "center";
-  ctx.fillStyle = COLORS.inkDim;
-  ctx.font = "700 13px ui-sans-serif, system-ui";
-  ctx.fillText("APOSTAS ABERTAS", width / 2, height / 2 - 64);
+  ctx.fillStyle = COLORS.label;
+  ctx.font = mono(11, 500);
+  ctx.letterSpacing = "3px";
+  ctx.fillText("PRÓXIMA RODADA", width / 2, centerY - 56);
+  ctx.letterSpacing = "0px";
 
-  ctx.fillStyle = COLORS.neon;
-  ctx.font = "800 72px ui-monospace, monospace";
-  ctx.shadowColor = COLORS.neon;
-  ctx.shadowBlur = 24;
-  ctx.fillText(`${seconds}s`, width / 2, height / 2 + 12);
-  ctx.shadowBlur = 0;
+  ctx.fillStyle = COLORS.ink;
+  ctx.font = mono(60, 600);
+  ctx.fillText(`${(remaining / 1000).toFixed(1)}s`, width / 2, centerY + 8);
 
-  const barWidth = Math.min(380, width * 0.7);
+  const barWidth = 220;
   const progress = Math.min(1, remaining / 10_000);
-  ctx.fillStyle = "rgba(28, 39, 64, 0.9)";
-  ctx.fillRect(width / 2 - barWidth / 2, height / 2 + 44, barWidth, 6);
-  ctx.fillStyle = COLORS.neon;
-  ctx.fillRect(width / 2 - barWidth / 2, height / 2 + 44, barWidth * progress, 6);
+  ctx.fillStyle = "#242424";
+  ctx.fillRect(width / 2 - barWidth / 2, centerY + 36, barWidth, 2);
+  ctx.fillStyle = COLORS.accent;
+  ctx.fillRect(width / 2 - barWidth / 2, centerY + 36, barWidth * progress, 2);
 
   if (seedHash) {
-    ctx.fillStyle = COLORS.inkDim;
-    ctx.font = "400 10px ui-monospace, monospace";
+    ctx.fillStyle = COLORS.label;
+    ctx.font = mono(10);
     ctx.fillText(
-      `compromisso sha256: ${seedHash.slice(0, 20)}…${seedHash.slice(-8)}`,
+      `compromisso sha256 ${seedHash.slice(0, 16)}…${seedHash.slice(-8)}`,
       width / 2,
-      height / 2 + 80,
+      centerY + 64,
     );
   }
 }
 
-function drawCurve(
+/** Returns the tip position so the crash can anchor its particles. */
+function drawRound(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
   elapsedMs: number,
   multiplier: number,
   crashed: boolean,
-) {
-  const padding = 28;
-  const plotWidth = width - padding * 2;
-  const plotHeight = height - padding * 2;
-  const windowMs = Math.max(3000, elapsedMs);
-  const maxMultiplier = Math.max(200, multiplier * 1.18);
-  const color = crashed ? COLORS.danger : COLORS.neon;
+): [number, number] | null {
+  const plotWidth = width - PAD.left - PAD.right;
+  const plotHeight = height - PAD.top - PAD.bottom;
+  const windowMs = Math.max(4000, elapsedMs * 1.05);
+  const maxMultiplier = Math.max(160, multiplier * 1.25);
+  const color = crashed ? COLORS.danger : COLORS.accent;
 
-  const pointFor = (t: number): [number, number] => {
-    const m = Math.min(multiplierAtElapsedMs(t), multiplier);
-    const x = padding + (t / windowMs) * plotWidth;
-    const y = height - padding - ((m - 100) / (maxMultiplier - 100)) * plotHeight;
-    return [x, y];
-  };
+  const xFor = (t: number) => PAD.left + (t / windowMs) * plotWidth;
+  const yFor = (m: number) =>
+    height - PAD.bottom - ((m - 100) / (maxMultiplier - 100)) * plotHeight;
+
+  ctx.textAlign = "right";
+  ctx.font = mono(10);
+  for (const tick of multiplierTicks(maxMultiplier)) {
+    const y = yFor(tick);
+    ctx.strokeStyle = COLORS.grid;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(PAD.left, y);
+    ctx.lineTo(width - PAD.right, y);
+    ctx.stroke();
+    ctx.fillStyle = COLORS.label;
+    ctx.fillText(`${multiplierToDecimal(tick)}×`, PAD.left - 10, y + 3);
+  }
+
+  const baseY = yFor(100);
+  ctx.strokeStyle = COLORS.axis;
+  ctx.beginPath();
+  ctx.moveTo(PAD.left, baseY);
+  ctx.lineTo(width - PAD.right, baseY);
+  ctx.stroke();
+  ctx.fillStyle = COLORS.label;
+  ctx.fillText("1.00×", PAD.left - 10, baseY + 3);
+
+  ctx.textAlign = "center";
+  const windowSeconds = windowMs / 1000;
+  const step = secondsStep(windowSeconds);
+  for (let s = step; s <= windowSeconds; s += step) {
+    const x = xFor(s * 1000);
+    ctx.strokeStyle = COLORS.grid;
+    ctx.beginPath();
+    ctx.moveTo(x, PAD.top);
+    ctx.lineTo(x, height - PAD.bottom);
+    ctx.stroke();
+    ctx.fillStyle = COLORS.label;
+    ctx.fillText(`${s}s`, x, height - PAD.bottom + 16);
+  }
 
   // area under the curve
+  const STEPS = 72;
   ctx.beginPath();
-  ctx.moveTo(padding, height - padding);
-  const STEPS = 64;
+  ctx.moveTo(PAD.left, baseY);
   for (let i = 0; i <= STEPS; i++) {
-    const [x, y] = pointFor((i / STEPS) * elapsedMs);
-    ctx.lineTo(x, y);
+    const t = (i / STEPS) * elapsedMs;
+    ctx.lineTo(xFor(t), yFor(Math.min(multiplierAtElapsedMs(t), multiplier)));
   }
-  const [tipX, tipY] = pointFor(elapsedMs);
-  ctx.lineTo(tipX, height - padding);
+  const tipX = xFor(elapsedMs);
+  const tipY = yFor(multiplier);
+  ctx.lineTo(tipX, baseY);
   ctx.closePath();
-  const fill = ctx.createLinearGradient(0, 0, 0, height);
-  fill.addColorStop(0, crashed ? "rgba(255,59,92,0.22)" : COLORS.neonSoft);
+  const fill = ctx.createLinearGradient(0, PAD.top, 0, baseY);
+  fill.addColorStop(0, crashed ? COLORS.dangerArea : COLORS.accentArea);
   fill.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = fill;
   ctx.fill();
 
-  // the curve itself, glowing
+  // the curve
   ctx.beginPath();
   for (let i = 0; i <= STEPS; i++) {
-    const [x, y] = pointFor((i / STEPS) * elapsedMs);
+    const t = (i / STEPS) * elapsedMs;
+    const x = xFor(t);
+    const y = yFor(Math.min(multiplierAtElapsedMs(t), multiplier));
     if (i === 0) {
       ctx.moveTo(x, y);
     } else {
@@ -256,33 +329,40 @@ function drawCurve(
     }
   }
   ctx.strokeStyle = color;
-  ctx.lineWidth = 3;
-  ctx.shadowColor = color;
-  ctx.shadowBlur = 16;
+  ctx.lineWidth = 2;
+  ctx.lineJoin = "round";
   ctx.stroke();
-  ctx.shadowBlur = 0;
 
-  // tip
+  // tip marker with a soft halo
+  const halo = ctx.createRadialGradient(tipX, tipY, 0, tipX, tipY, 12);
+  halo.addColorStop(0, crashed ? "rgba(229,72,77,0.25)" : "rgba(62,207,142,0.25)");
+  halo.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = halo;
   ctx.beginPath();
-  ctx.arc(tipX, tipY, 6, 0, Math.PI * 2);
-  ctx.fillStyle = color;
-  ctx.shadowColor = color;
-  ctx.shadowBlur = 18;
+  ctx.arc(tipX, tipY, 12, 0, Math.PI * 2);
   ctx.fill();
-  ctx.shadowBlur = 0;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(tipX, tipY, 3.5, 0, Math.PI * 2);
+  ctx.fill();
 
-  // multiplier readout
+  // typographic readout
+  const readoutX = PAD.left + plotWidth / 2;
+  const readoutY = PAD.top + plotHeight * 0.34;
   ctx.textAlign = "center";
-  ctx.fillStyle = crashed ? COLORS.danger : COLORS.ink;
-  ctx.font = "800 64px ui-monospace, monospace";
-  ctx.shadowColor = color;
-  ctx.shadowBlur = crashed ? 28 : 12;
-  ctx.fillText(`${multiplierToDecimal(multiplier)}×`, width / 2, height / 2 - 8);
-  ctx.shadowBlur = 0;
-
   if (crashed) {
     ctx.fillStyle = COLORS.danger;
-    ctx.font = "700 18px ui-sans-serif, system-ui";
-    ctx.fillText("CRASHOU", width / 2, height / 2 + 28);
+    ctx.font = mono(11, 600);
+    ctx.letterSpacing = "4px";
+    ctx.fillText("CRASH", readoutX, readoutY - 48);
+    ctx.letterSpacing = "0px";
   }
+  ctx.fillStyle = crashed ? COLORS.danger : COLORS.ink;
+  ctx.font = mono(72, 600);
+  ctx.fillText(`${multiplierToDecimal(multiplier)}×`, readoutX, readoutY);
+  ctx.fillStyle = COLORS.label;
+  ctx.font = mono(12);
+  ctx.fillText(`${(elapsedMs / 1000).toFixed(1)}s`, readoutX, readoutY + 28);
+
+  return [tipX, tipY];
 }

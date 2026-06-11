@@ -24,7 +24,7 @@ export default function CallbackPage() {
   return (
     <main className="flex min-h-dvh items-center justify-center p-4">
       <Card className="w-full max-w-sm">
-        <CardContent className="py-10 text-center text-sm text-ink-dim">
+        <CardContent className="py-10 text-center text-[13px] text-ink-2">
           {error ?? "Concluindo login…"}
         </CardContent>
       </Card>

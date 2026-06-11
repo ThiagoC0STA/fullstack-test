@@ -18,7 +18,7 @@ export default function LoginPage() {
     <main className="flex min-h-dvh items-center justify-center p-4">
       <Card className="w-full max-w-sm">
         <CardContent className="flex flex-col items-center gap-4 py-10 text-center">
-          <p className="text-sm text-ink-dim">Redirecionando para o Keycloak…</p>
+          <p className="text-[13px] text-ink-2">Redirecionando para o Keycloak…</p>
           <Button onClick={() => void login()}>Ir agora</Button>
         </CardContent>
       </Card>

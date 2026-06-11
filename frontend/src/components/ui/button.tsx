@@ -2,24 +2,23 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition-all duration-150 disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-neon cursor-pointer",
+  "inline-flex cursor-pointer items-center justify-center gap-2 rounded-md font-medium transition-colors duration-150 ease-out focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-40",
   {
     variants: {
       variant: {
-        default: "bg-neon text-black hover:bg-neon-dim active:scale-[0.98]",
-        danger: "bg-danger text-white hover:brightness-110 active:scale-[0.98]",
-        outline:
-          "border border-border-soft bg-transparent text-ink hover:border-neon/60 hover:text-neon",
-        ghost: "bg-transparent text-ink-dim hover:bg-card hover:text-ink",
+        primary: "bg-accent text-[#0c0c0c] hover:bg-accent-dim",
+        danger: "bg-danger text-white hover:brightness-110",
+        outline: "border border-edge bg-transparent text-ink hover:border-edge-strong",
+        ghost: "bg-transparent text-ink-2 hover:bg-surface-2 hover:text-ink",
       },
       size: {
-        default: "h-10 px-4 text-sm",
-        sm: "h-8 px-3 text-xs",
-        lg: "h-14 px-6 text-lg",
-        icon: "size-9",
+        default: "h-9 px-4 text-[13px]",
+        sm: "h-7 px-2.5 text-xs",
+        lg: "h-10 px-5 text-sm",
+        icon: "size-8",
       },
     },
-    defaultVariants: { variant: "default", size: "default" },
+    defaultVariants: { variant: "primary", size: "default" },
   },
 );
 

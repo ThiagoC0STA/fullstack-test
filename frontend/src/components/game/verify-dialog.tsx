@@ -5,7 +5,6 @@ import { useQuery } from "@tanstack/react-query";
 import { BadgeCheck, ShieldAlert, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api";
 import { formatMultiplier } from "@/lib/format";
@@ -44,22 +43,25 @@ export function VerifyDialog({ roundId, onClose }: VerifyDialogProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
     >
-      <Card
-        className="max-h-[85dvh] w-full max-w-lg overflow-y-auto"
+      <div
+        className="max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-[10px] border border-edge bg-surface shadow-[0_8px_24px_rgba(0,0,0,0.4)]"
         onClick={(event) => event.stopPropagation()}
       >
-        <CardHeader>
-          <CardTitle>Verificação provably fair</CardTitle>
+        <div className="flex h-11 items-center justify-between border-b border-edge px-4">
+          <h2 className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-2">
+            Verificação provably fair
+          </h2>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Fechar">
             <X className="size-4" />
           </Button>
-        </CardHeader>
-        <CardContent className="space-y-4">
+        </div>
+
+        <div className="space-y-4 p-4">
           {verification.isLoading && (
             <div className="space-y-2">
               <Skeleton className="h-10 w-full" />
@@ -69,26 +71,26 @@ export function VerifyDialog({ roundId, onClose }: VerifyDialogProps) {
           )}
 
           {verification.isError && (
-            <p className="text-sm text-danger">
+            <p className="text-[13px] text-danger">
               Não foi possível carregar a verificação desta rodada.
             </p>
           )}
 
           {verification.data && (
             <>
-              <div className="text-center">
-                <p className="text-xs uppercase tracking-widest text-ink-dim">
+              <div className="py-2 text-center">
+                <p className="text-[11px] uppercase tracking-[0.08em] text-ink-3">
                   crash point
                 </p>
-                <p className="font-mono text-4xl font-bold text-neon">
+                <p className="mt-1 font-mono text-3xl font-semibold text-accent">
                   {formatMultiplier(verification.data.crashPointHundredths)}
                 </p>
               </div>
 
-              <Field label="Hash publicado ANTES da rodada (compromisso)">
+              <Field label="Hash publicado antes da rodada (compromisso)">
                 {verification.data.seedHash}
               </Field>
-              <Field label="Seed revelado APÓS o crash">
+              <Field label="Seed revelado após o crash">
                 {verification.data.serverSeed}
               </Field>
               <Field label="Algoritmo">{verification.data.algorithm}</Field>
@@ -102,7 +104,7 @@ export function VerifyDialog({ roundId, onClose }: VerifyDialogProps) {
               </Button>
 
               {result && (
-                <div className="space-y-2 rounded-lg bg-surface-2 p-3">
+                <div className="space-y-2.5 rounded-md border border-edge bg-bg p-3">
                   <CheckRow
                     ok={result.seedHashValid}
                     label="sha256(seed) confere com o hash publicado"
@@ -111,30 +113,32 @@ export function VerifyDialog({ roundId, onClose }: VerifyDialogProps) {
                     ok={result.crashPointValid}
                     label={`crash point recalculado: ${formatMultiplier(result.computedCrashPointHundredths)}`}
                   />
-                  {result.seedHashValid && result.crashPointValid ? (
-                    <p className="text-center text-xs text-neon">
-                      Resultado pré-determinado e não manipulado ✓
-                    </p>
-                  ) : (
-                    <p className="text-center text-xs text-danger">
-                      Divergência encontrada — esta rodada não passa na auditoria!
-                    </p>
-                  )}
+                  <p
+                    className={
+                      result.seedHashValid && result.crashPointValid
+                        ? "text-center text-xs text-accent"
+                        : "text-center text-xs text-danger"
+                    }
+                  >
+                    {result.seedHashValid && result.crashPointValid
+                      ? "Resultado pré-determinado e não manipulado"
+                      : "Divergência encontrada — esta rodada não passa na auditoria"}
+                  </p>
                 </div>
               )}
             </>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1">
-      <p className="text-[11px] uppercase tracking-wide text-ink-dim">{label}</p>
-      <p className="break-all rounded-lg bg-surface-2 p-2 font-mono text-xs text-ink">
+    <div>
+      <p className="mb-1.5 text-[11px] font-medium text-ink-3">{label}</p>
+      <p className="break-all rounded-md border border-edge bg-bg p-2.5 font-mono text-[11px] leading-relaxed text-ink-2">
         {children}
       </p>
     </div>
@@ -143,9 +147,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function CheckRow({ ok, label }: { ok: boolean; label: string }) {
   return (
-    <div className="flex items-center gap-2 text-sm">
+    <div className="flex items-center gap-2 text-[13px]">
       {ok ? (
-        <BadgeCheck className="size-4 shrink-0 text-neon" />
+        <BadgeCheck className="size-4 shrink-0 text-accent" />
       ) : (
         <ShieldAlert className="size-4 shrink-0 text-danger" />
       )}

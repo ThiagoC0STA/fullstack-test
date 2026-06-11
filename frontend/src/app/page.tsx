@@ -13,15 +13,17 @@ export default function GamePage() {
   return (
     <>
       <Header />
-      <main className="mx-auto grid w-full max-w-7xl gap-4 px-4 pb-10 lg:grid-cols-[1fr_340px]">
-        <div className="space-y-4">
-          <RoundHistory />
-          <GameChart />
-          <BetControls />
+      <main className="mx-auto w-full max-w-[1200px] space-y-4 px-6 py-6">
+        <RoundHistory />
+        <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
+          <div className="space-y-4">
+            <GameChart />
+            <BetControls />
+          </div>
+          <aside className="lg:sticky lg:top-6 lg:self-start">
+            <LiveBets />
+          </aside>
         </div>
-        <aside className="lg:sticky lg:top-4 lg:self-start">
-          <LiveBets />
-        </aside>
       </main>
     </>
   );

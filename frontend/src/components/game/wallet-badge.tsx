@@ -9,16 +9,16 @@ export function WalletBadge() {
   const wallet = useWallet();
 
   if (wallet.isLoading) {
-    return <Skeleton className="h-9 w-28" />;
+    return <Skeleton className="h-8 w-24" />;
   }
   if (!wallet.data) {
     return null;
   }
 
   return (
-    <div className="flex h-9 items-center gap-2 rounded-lg border border-border-soft bg-surface-2 px-3">
-      <Coins className="size-4 text-gold" aria-hidden />
-      <span className="font-mono text-sm font-bold text-ink">
+    <div className="flex h-8 items-center gap-2 rounded-md border border-edge bg-surface px-2.5">
+      <Coins className="size-3.5 text-ink-3" aria-hidden />
+      <span className="font-mono text-[13px] font-medium tabular-nums text-ink">
         {formatMoney(wallet.data.balanceCents)}
       </span>
     </div>

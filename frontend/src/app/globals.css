@@ -1,29 +1,27 @@
 @import "tailwindcss";
 
 @theme {
-  --color-surface: #070b15;
-  --color-surface-2: #0c1322;
-  --color-card: #101a2e;
-  --color-border-soft: #1c2740;
-  --color-neon: #00ff9d;
-  --color-neon-dim: #00c97c;
-  --color-danger: #ff3b5c;
-  --color-gold: #ffc857;
-  --color-ink: #e8edf7;
-  --color-ink-dim: #8b97b0;
+  --color-bg: #101010;
+  --color-surface: #151515;
+  --color-surface-2: #1c1c1c;
+  --color-edge: #262626;
+  --color-edge-strong: #363636;
+  --color-ink: #ededed;
+  --color-ink-2: #8f8f8f;
+  --color-ink-3: #5d5d5d;
+  --color-accent: #3ecf8e;
+  --color-accent-dim: #2fae76;
+  --color-danger: #e5484d;
+  --color-gold: #d4a548;
 
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
 
-  --animate-pulse-glow: pulse-glow 1.6s ease-in-out infinite;
-  --animate-flash: flash 0.5s ease-out;
+  --animate-shimmer: shimmer 1.8s ease-in-out infinite;
 
-  @keyframes pulse-glow {
-    0%, 100% { box-shadow: 0 0 12px rgba(0, 255, 157, 0.35); }
-    50% { box-shadow: 0 0 28px rgba(0, 255, 157, 0.7); }
-  }
-  @keyframes flash {
-    from { opacity: 0.9; }
-    to { opacity: 0; }
+  @keyframes shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
   }
 }
 
@@ -32,16 +30,14 @@ html {
 }
 
 body {
-  background:
-    radial-gradient(1200px 600px at 70% -10%, rgba(0, 255, 157, 0.06), transparent 60%),
-    radial-gradient(900px 500px at 10% 110%, rgba(255, 59, 92, 0.05), transparent 60%),
-    var(--color-surface);
+  background: var(--color-bg);
   color: var(--color-ink);
   min-height: 100dvh;
+  font-feature-settings: "tnum";
 }
 
 ::selection {
-  background: rgba(0, 255, 157, 0.3);
+  background: rgba(62, 207, 142, 0.25);
 }
 
 ::-webkit-scrollbar {
@@ -49,6 +45,9 @@ body {
   height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border-soft);
+  background: var(--color-edge);
   border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-edge-strong);
 }

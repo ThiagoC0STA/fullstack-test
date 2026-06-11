@@ -2,7 +2,7 @@
 
 import type { BetView } from "@crash/contracts";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatMoney, formatMultiplier } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/auth-store";
@@ -36,47 +36,52 @@ export function LiveBets() {
     <Card className="h-full">
       <CardHeader>
         <CardTitle>Apostas da rodada</CardTitle>
-        <span className="font-mono text-xs text-ink-dim">{visible.length}</span>
+        <span className="font-mono text-xs text-ink-3">{visible.length}</span>
       </CardHeader>
-      <CardContent className="space-y-1.5">
-        {visible.length === 0 && (
-          <p className="py-8 text-center text-sm text-ink-dim">
-            Ninguém apostou ainda nesta rodada
-          </p>
-        )}
-        {visible.map((bet) => {
-          const mine = bet.playerId === playerId;
-          return (
-            <div
-              key={bet.betId}
-              className={cn(
-                "flex items-center justify-between gap-2 rounded-lg border border-transparent bg-surface-2/70 px-3 py-2",
-                mine && "border-neon/40",
-                bet.status === "cashed_out" && "bg-neon/5",
-                bet.status === "lost" && "opacity-60",
-              )}
-            >
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-card font-mono text-xs uppercase text-neon">
-                  {bet.username.slice(0, 1)}
-                </span>
-                <span className="truncate text-sm">
-                  {bet.username}
-                  {mine && <span className="ml-1 text-[10px] text-neon">(você)</span>}
-                </span>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <span className="font-mono text-xs text-ink-dim">
-                  {bet.status === "cashed_out" && bet.payoutCents
-                    ? formatMoney(bet.payoutCents)
-                    : formatMoney(bet.amountCents)}
-                </span>
-                {statusBadge(bet)}
-              </div>
-            </div>
-          );
-        })}
-      </CardContent>
+      {visible.length === 0 ? (
+        <p className="py-12 text-center text-[13px] text-ink-3">
+          Ninguém apostou nesta rodada
+        </p>
+      ) : (
+        <ul className="divide-y divide-edge">
+          {visible.map((bet) => {
+            const mine = bet.playerId === playerId;
+            return (
+              <li
+                key={bet.betId}
+                className={cn(
+                  "flex h-11 items-center justify-between gap-2 px-4",
+                  mine && "bg-surface-2/50",
+                  bet.status === "lost" && "opacity-50",
+                )}
+              >
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <span className="grid size-6 shrink-0 place-items-center rounded bg-surface-2 font-mono text-[11px] uppercase text-ink-2">
+                    {bet.username.slice(0, 1)}
+                  </span>
+                  <span className="truncate text-[13px] text-ink">
+                    {bet.username}
+                    {mine && <span className="ml-1.5 text-[11px] text-accent">você</span>}
+                  </span>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span
+                    className={cn(
+                      "font-mono text-xs tabular-nums",
+                      bet.status === "cashed_out" ? "text-accent" : "text-ink-2",
+                    )}
+                  >
+                    {bet.status === "cashed_out" && bet.payoutCents
+                      ? formatMoney(bet.payoutCents)
+                      : formatMoney(bet.amountCents)}
+                  </span>
+                  {statusBadge(bet)}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </Card>
   );
 }
