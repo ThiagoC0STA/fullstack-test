@@ -2,10 +2,20 @@ FROM oven/bun:1-alpine
 
 WORKDIR /app
 
-COPY package.json ./
-RUN bun install
+# Workspace manifests first so the install layer is cached
+COPY package.json bun.lock ./
+COPY packages/contracts/package.json packages/contracts/
+COPY services/games/package.json services/games/
+COPY services/wallets/package.json services/wallets/
+COPY frontend/package.json frontend/
 
-COPY . .
+RUN bun install --frozen-lockfile
+
+COPY tsconfig.base.json ./
+COPY packages ./packages
+COPY services/games ./services/games
+
+WORKDIR /app/services/games
 
 EXPOSE 4001
 
