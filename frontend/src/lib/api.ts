@@ -1,6 +1,7 @@
 import type {
   ApiResponse,
   BetView,
+  PlayerBetHistoryItem,
   RoundHistoryItem,
   RoundSnapshot,
   RoundVerification,
@@ -63,6 +64,10 @@ export const api = {
     request<RoundVerification>(`/games/rounds/${roundId}/verify`),
   myWallet: () => request<WalletView>("/wallets/me", { auth: true }),
   openWallet: () => request<WalletView>("/wallets", { method: "POST", auth: true }),
+  myBets: (limit = 12) =>
+    request<PlayerBetHistoryItem[]>(`/games/bets/me?page=1&limit=${limit}`, {
+      auth: true,
+    }),
   placeBet: (amountCents: string) =>
     request<BetView>("/games/bet", { method: "POST", auth: true, body: { amountCents } }),
   cashOut: () => request<BetView>("/games/bet/cashout", { method: "POST", auth: true }),

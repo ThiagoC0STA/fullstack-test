@@ -19,7 +19,7 @@ export function Header() {
 
   return (
     <header className="border-b border-edge">
-      <div className="mx-auto flex h-14 w-full max-w-[1200px] items-center justify-between px-6">
+      <div className="mx-auto flex h-14 w-full max-w-[1300px] items-center justify-between px-6">
         <div className="flex items-center gap-2.5">
           <h1 className="text-[15px] font-semibold tracking-tight text-ink">
             CRASH<span className="text-accent">//</span>JUNGLE

@@ -3,6 +3,7 @@
 import { BetControls } from "@/components/game/bet-controls";
 import { GameChart } from "@/components/game/game-chart";
 import { LiveBets } from "@/components/game/live-bets";
+import { MyBets } from "@/components/game/my-bets";
 import { RoundHistory } from "@/components/game/round-history";
 import { Header } from "@/components/header";
 import { useGameSocket } from "@/hooks/use-game-socket";
@@ -13,7 +14,7 @@ export default function GamePage() {
   return (
     <>
       <Header />
-      <main className="mx-auto w-full max-w-[1200px] space-y-4 px-6 py-6">
+      <main className="mx-auto w-full max-w-[1300px] space-y-4 px-6 py-6">
         <RoundHistory />
         {/* min-w-0 keeps wide children (chips, canvas) from inflating the
             1fr track past the viewport and pushing the aside off-screen */}
@@ -22,8 +23,9 @@ export default function GamePage() {
             <GameChart />
             <BetControls />
           </div>
-          <aside className="min-w-0 lg:sticky lg:top-6 lg:self-start">
+          <aside className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-6 lg:self-start">
             <LiveBets />
+            <MyBets />
           </aside>
         </div>
       </main>

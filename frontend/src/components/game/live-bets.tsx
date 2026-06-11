@@ -33,7 +33,7 @@ export function LiveBets() {
   const visible = bets.filter((bet) => bet.status !== "rejected");
 
   return (
-    <Card className="flex flex-col overflow-hidden lg:max-h-[calc(100dvh-6rem)]">
+    <Card className="flex flex-col overflow-hidden lg:max-h-[42vh]">
       <CardHeader className="shrink-0">
         <CardTitle>Apostas da rodada</CardTitle>
         <span className="font-mono text-xs text-ink-3">{visible.length}</span>
