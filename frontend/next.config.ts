@@ -1,4 +1,6 @@
 import type { NextConfig } from "next";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * Baseline security headers on every response. A real-money product is
@@ -21,10 +23,15 @@ const securityHeaders = [
   },
 ];
 
+const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+
 const nextConfig: NextConfig = {
   // @crash/contracts ships TypeScript source; Next transpiles it in-place
   transpilePackages: ["@crash/contracts"],
   poweredByHeader: false,
+  turbopack: {
+    root: repoRoot,
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

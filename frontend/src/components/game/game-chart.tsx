@@ -51,6 +51,13 @@ interface Scale {
   windowMs: number;
 }
 
+interface VisualScaleState {
+  key: string;
+  windowMs: number;
+  maxMult: number;
+  lastFrameMs: number;
+}
+
 let cachedMonoFamily: string | null = null;
 
 function monoFamily(): string {
@@ -103,19 +110,49 @@ function smoothMultiplierAt(elapsedMs: number): number {
   return 100 * Math.exp(GROWTH_RATE_PER_MS * elapsedMs);
 }
 
-// tight starting frame so the curve climbs from the first instant
-// instead of hugging the baseline inside an oversized box
+const CURVE_TAKEOFF_MS = 2600;
 const MIN_WINDOW_MS = 2500;
-const MIN_MAX_MULT = 118;
 const WINDOW_HEADROOM = 1.12;
-const MULT_HEADROOM = 1.28;
+// the axis height tracks the curve's RISE (multiplier - 1.00x), not the
+// absolute multiplier, so the curve fills a constant ~2/3 of the height
+// and climbs steeply from the first instant instead of hugging the
+// baseline. The minimum span avoids a zero-height axis at 1.00x and
+// gives the opening below 1.08x room to climb into.
+const SPAN_HEADROOM = 1.5;
+const MIN_MULT_SPAN = 12;
+
+/** Top of the y-axis (hundredths) for a given live multiplier. */
+function axisTop(multiplier: number): number {
+  return 100 + Math.max(MIN_MULT_SPAN, (multiplier - 100) * SPAN_HEADROOM);
+}
+
+function smoothTakeoffMultiplierAt(
+  elapsedMs: number,
+  tipMultiplier: number,
+): number {
+  if (elapsedMs >= CURVE_TAKEOFF_MS) {
+    return Math.min(smoothMultiplierAt(elapsedMs), tipMultiplier);
+  }
+
+  const t = elapsedMs / CURVE_TAKEOFF_MS;
+  const t2 = t * t;
+  const t3 = t2 * t;
+  const start = 100;
+  const end = smoothMultiplierAt(CURVE_TAKEOFF_MS);
+  const endSlope = GROWTH_RATE_PER_MS * end * CURVE_TAKEOFF_MS * 1.35;
+  const value =
+    (2 * t3 - 3 * t2 + 1) * start +
+    (-2 * t3 + 3 * t2) * end +
+    (t3 - t2) * endSlope;
+
+  return Math.max(start, Math.min(value, tipMultiplier));
+}
 
 /**
- * Axes that grow continuously and self-similarly with the round. The
- * live tip stays at a fixed fraction of the frame, so the curve scales
- * smoothly every frame with no quantization thresholds to jump across
- * (those read as the curve "teleporting"). The floors keep an oversized
- * frame at the very start from flattening the early curve.
+ * Axes that grow continuously and self-similarly with the round, so the
+ * live tip sits at a near-fixed fraction of the frame and the curve
+ * flows smoothly beneath it every frame — no quantization thresholds to
+ * jump across (those read as the curve "teleporting").
  */
 function liveScale(
   elapsedMs: number,
@@ -123,7 +160,7 @@ function liveScale(
 ): { windowMs: number; maxMult: number } {
   return {
     windowMs: Math.max(MIN_WINDOW_MS, elapsedMs * WINDOW_HEADROOM),
-    maxMult: Math.max(MIN_MAX_MULT, multiplier * MULT_HEADROOM),
+    maxMult: axisTop(multiplier),
   };
 }
 
@@ -139,6 +176,12 @@ export function GameChart() {
   const prevPhaseRef = useRef<string>("idle");
   const crashFlashRef = useRef(0);
   const elapsedRef = useRef<{ key: string; value: number }>({ key: "", value: 0 });
+  const visualScaleRef = useRef<VisualScaleState>({
+    key: "",
+    windowMs: MIN_WINDOW_MS,
+    maxMult: axisTop(100),
+    lastFrameMs: 0,
+  });
 
   useEffect(() => {
     let frame = 0;
@@ -224,7 +267,16 @@ export function GameChart() {
         }
         const elapsed = elapsedRef.current.value;
         const multiplier = multiplierAtElapsedMs(elapsed);
-        const scale = liveScale(elapsed, multiplier);
+        const smoothMultiplier = smoothMultiplierAt(elapsed);
+        const scale = smoothVisualScale(
+          visualScaleRef.current,
+          key,
+          liveScale(elapsed, smoothMultiplier),
+          now,
+          elapsed,
+          smoothMultiplier,
+        );
+        visualScaleRef.current = scale;
         drawRound(
           ctx,
           width,
@@ -283,6 +335,36 @@ export function GameChart() {
       </p>
     </div>
   );
+}
+
+function smoothVisualScale(
+  previous: VisualScaleState,
+  key: string,
+  target: { windowMs: number; maxMult: number },
+  frameTimeMs: number,
+  elapsedMs: number,
+  tipMultiplier: number,
+): VisualScaleState {
+  if (previous.key !== key) {
+    return {
+      key,
+      windowMs: target.windowMs,
+      maxMult: target.maxMult,
+      lastFrameMs: frameTimeMs,
+    };
+  }
+
+  const dt = Math.min(50, Math.max(0, frameTimeMs - previous.lastFrameMs));
+  const alpha = 1 - Math.exp(-dt / 140);
+  const windowMs = previous.windowMs + (target.windowMs - previous.windowMs) * alpha;
+  const maxMult = previous.maxMult + (target.maxMult - previous.maxMult) * alpha;
+
+  return {
+    key,
+    windowMs: Math.max(MIN_WINDOW_MS, elapsedMs * 1.03, windowMs),
+    maxMult: Math.max(axisTop(tipMultiplier * 0.92), maxMult),
+    lastFrameMs: frameTimeMs,
+  };
 }
 
 /** Cashouts of the current round, ready to be pinned on the curve. */
@@ -395,16 +477,37 @@ function traceCurve(
   elapsedMs: number,
   multiplier: number,
 ) {
-  const STEPS = 72;
+  const curveWidth = Math.max(1, scale.xFor(elapsedMs) - PAD.left);
+  const STEPS = Math.max(96, Math.ceil(curveWidth / 3));
+  const points: Array<{ x: number; y: number }> = [];
+
   for (let i = 0; i <= STEPS; i++) {
     const t = (i / STEPS) * elapsedMs;
-    const x = scale.xFor(t);
-    const y = scale.yFor(Math.min(smoothMultiplierAt(t), multiplier));
-    if (i === 0) {
-      ctx.moveTo(x, y);
-    } else {
-      ctx.lineTo(x, y);
-    }
+    points.push({
+      x: scale.xFor(t),
+      y: scale.yFor(smoothTakeoffMultiplierAt(t, multiplier)),
+    });
+  }
+
+  const first = points[0];
+  if (!first) {
+    return;
+  }
+
+  ctx.moveTo(first.x, first.y);
+
+  for (let i = 1; i < points.length - 1; i++) {
+    const current = points[i] as { x: number; y: number };
+    const next = points[i + 1] as { x: number; y: number };
+    const midX = (current.x + next.x) / 2;
+    const midY = (current.y + next.y) / 2;
+    ctx.quadraticCurveTo(current.x, current.y, midX, midY);
+  }
+
+  const last = points[points.length - 1];
+  if (last && points.length > 1) {
+    const previous = points[points.length - 2] as { x: number; y: number };
+    ctx.quadraticCurveTo(previous.x, previous.y, last.x, last.y);
   }
 }
 
@@ -427,7 +530,7 @@ function drawBetting(
     width,
     height,
     Math.max(MIN_WINDOW_MS, ghostElapsed * 1.05),
-    Math.max(MIN_MAX_MULT, ghostCrash * 1.25),
+    axisTop(ghostCrash),
   );
 
   if (lastRound) {
@@ -440,7 +543,7 @@ function drawBetting(
     ctx.setLineDash([]);
 
     const ghostX = scale.xFor(ghostElapsed);
-    const ghostY = scale.yFor(ghostCrash);
+    const ghostY = scale.yFor(smoothTakeoffMultiplierAt(ghostElapsed, ghostCrash));
     ctx.fillStyle = COLORS.ghost;
     ctx.beginPath();
     ctx.arc(ghostX, ghostY, 3, 0, Math.PI * 2);
@@ -498,14 +601,14 @@ function drawRound(
   crashed: boolean,
   cashouts: CashoutPin[] = [],
   windowMs = Math.max(MIN_WINDOW_MS, elapsedMs * WINDOW_HEADROOM),
-  maxMult = Math.max(MIN_MAX_MULT, multiplier * MULT_HEADROOM),
+  maxMult = axisTop(multiplier),
 ): [number, number] | null {
   const color = crashed ? COLORS.danger : COLORS.accent;
   const scale = drawChrome(ctx, width, height, windowMs, maxMult);
 
-  // the curve is drawn from the smooth (unfloored) value so it never
-  // stair-steps; at the crash tip the two agree exactly
-  const curveTip = crashed ? multiplier : smoothMultiplierAt(elapsedMs);
+  // the curve uses one visual value for fill, stroke and marker.
+  const rawCurveTip = crashed ? multiplier : smoothMultiplierAt(elapsedMs);
+  const curveTip = smoothTakeoffMultiplierAt(elapsedMs, rawCurveTip);
   const tipX = scale.xFor(elapsedMs);
   const tipY = scale.yFor(curveTip);
 
@@ -521,8 +624,7 @@ function drawRound(
   ctx.fillStyle = fill;
   ctx.fill();
 
-  // the curve — same smooth tip as the fill and the dot, so the stroke
-  // reaches the marker exactly instead of flattening on the floored value
+  // the curve reaches the marker instead of flattening on the floored value.
   ctx.beginPath();
   traceCurve(ctx, scale, elapsedMs, curveTip);
   ctx.strokeStyle = color;
@@ -536,8 +638,9 @@ function drawRound(
     if (pin.multiplier > multiplier) {
       continue;
     }
-    const pinX = scale.xFor(elapsedForMultiplier(pin.multiplier));
-    const pinY = scale.yFor(pin.multiplier);
+    const pinElapsed = elapsedForMultiplier(pin.multiplier);
+    const pinX = scale.xFor(pinElapsed);
+    const pinY = scale.yFor(smoothTakeoffMultiplierAt(pinElapsed, curveTip));
     ctx.fillStyle = COLORS.accent;
     ctx.beginPath();
     ctx.arc(pinX, pinY, pin.mine ? 4 : 2.5, 0, Math.PI * 2);
