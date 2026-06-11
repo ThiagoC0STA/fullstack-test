@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #070b15;
+  --color-surface-2: #0c1322;
+  --color-card: #101a2e;
+  --color-border-soft: #1c2740;
+  --color-neon: #00ff9d;
+  --color-neon-dim: #00c97c;
+  --color-danger: #ff3b5c;
+  --color-gold: #ffc857;
+  --color-ink: #e8edf7;
+  --color-ink-dim: #8b97b0;
+
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --animate-pulse-glow: pulse-glow 1.6s ease-in-out infinite;
+  --animate-flash: flash 0.5s ease-out;
+
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 12px rgba(0, 255, 157, 0.35); }
+    50% { box-shadow: 0 0 28px rgba(0, 255, 157, 0.7); }
+  }
+  @keyframes flash {
+    from { opacity: 0.9; }
+    to { opacity: 0; }
+  }
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background:
+    radial-gradient(1200px 600px at 70% -10%, rgba(0, 255, 157, 0.06), transparent 60%),
+    radial-gradient(900px 500px at 10% 110%, rgba(255, 59, 92, 0.05), transparent 60%),
+    var(--color-surface);
+  color: var(--color-ink);
+  min-height: 100dvh;
+}
+
+::selection {
+  background: rgba(0, 255, 157, 0.3);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-soft);
+  border-radius: 4px;
+}
