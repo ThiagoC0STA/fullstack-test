@@ -16,3 +16,21 @@ services:
         paths:
           - /wallets
         strip_path: true
+
+plugins:
+  # Generous dev limits per client IP; protects the services from
+  # accidental floods without getting in the way of the realtime UI.
+  - name: rate-limiting
+    service: games-service
+    config:
+      second: 20
+      minute: 600
+      policy: local
+      limit_by: ip
+  - name: rate-limiting
+    service: wallets-service
+    config:
+      second: 20
+      minute: 600
+      policy: local
+      limit_by: ip

@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
   addCents,
   compareCents,
@@ -24,18 +24,24 @@ import {
  * Requires `bun run docker:up`.
  */
 let token: string;
+let setupPromise: Promise<void> | null = null;
 
-beforeAll(async () => {
-  await ensureStackIsUp();
-  token = await getAccessToken();
-  // open the wallet (idempotent) so a wiped database still works
-  await call("/wallets", { method: "POST", token });
-});
+/** Lazy setup: bun's default hook timeout is too tight right after boot. */
+function ready(): Promise<void> {
+  setupPromise ??= (async () => {
+    await ensureStackIsUp();
+    token = await getAccessToken();
+    // open the wallet (idempotent) so a wiped database still works
+    await call("/wallets", { method: "POST", token });
+  })();
+  return setupPromise;
+}
 
 describe("crash game E2E", () => {
   test(
     "bet -> multiplier runs -> cashout -> balance updated exactly",
     async () => {
+      await ready();
       await waitForFreshBettingRound();
       const before = (await myWallet(token)).balanceCents;
 
@@ -72,12 +78,13 @@ describe("crash game E2E", () => {
       const wallet = await waitForBalance(token, expected);
       expect(wallet.balanceCents).toBe(expected);
     },
-    { timeout: 90_000 },
+    { timeout: 300_000 },
   );
 
   test(
     "bet -> crash -> bet lost and balance only debited",
     async () => {
+      await ready();
       await waitForFreshBettingRound();
       const before = (await myWallet(token)).balanceCents;
 
@@ -98,12 +105,13 @@ describe("crash game E2E", () => {
       const wallet = await waitForBalance(token, subtractCents(before, "500"));
       expect(wallet.balanceCents).toBe(subtractCents(before, "500"));
     },
-    { timeout: 300_000 },
+    { timeout: 600_000 },
   );
 
   test(
     "rejects a second bet in the same round",
     async () => {
+      await ready();
       await waitForFreshBettingRound();
       const first = await call<BetView>("/games/bet", {
         method: "POST",
@@ -120,12 +128,13 @@ describe("crash game E2E", () => {
       expect(second.status).toBe(409);
       expect(second.error).toContain("already");
     },
-    { timeout: 60_000 },
+    { timeout: 300_000 },
   );
 
   test(
     "rejects bets while the round is running",
     async () => {
+      await ready();
       await waitForRunningRound(60_000);
       const result = await call<BetView>("/games/bet", {
         method: "POST",
@@ -134,12 +143,16 @@ describe("crash game E2E", () => {
       });
       expect(result.status).toBe(409);
     },
-    { timeout: 90_000 },
+    { timeout: 120_000 },
   );
 
   test(
     "rejects malformed amounts outright",
     async () => {
+      await ready();
+      // amount validation only runs once the round accepts bets, so a
+      // betting phase is required to observe the 400 (otherwise 409)
+      await waitForFreshBettingRound();
       const result = await call<BetView>("/games/bet", {
         method: "POST",
         token,
@@ -147,7 +160,7 @@ describe("crash game E2E", () => {
       });
       expect(result.status).toBe(400);
     },
-    { timeout: 15_000 },
+    { timeout: 300_000 },
   );
 
   test(
@@ -156,6 +169,7 @@ describe("crash game E2E", () => {
       // drain the wallet down to 50.00 through the real broker path,
       // then try to bet 100.00: the wallet replies debit failed and the
       // bet must end up rejected
+      await ready();
       const balance = (await myWallet(token)).balanceCents;
       if (compareCents(balance, "5000") > 0) {
         await publishWalletOperation(
@@ -178,20 +192,25 @@ describe("crash game E2E", () => {
       const rejected = await waitForBetStatus(token, betId, ["rejected"], 20_000);
       expect(rejected.status).toBe("rejected");
 
-      // top the wallet back up so repeated runs keep working
-      await publishWalletOperation(
-        ROUTING_KEYS.WALLET_CREDIT_REQUESTED,
-        "95000",
-        "bet_refund",
-      );
-      await waitForBalance(token, "100000", 20_000);
+      // top the wallet back up so repeated runs keep working; the
+      // credit is computed from the live balance, never assumed
+      const drained = (await myWallet(token)).balanceCents;
+      if (compareCents(drained, "100000") < 0) {
+        await publishWalletOperation(
+          ROUTING_KEYS.WALLET_CREDIT_REQUESTED,
+          subtractCents("100000", drained),
+          "bet_refund",
+        );
+        await waitForBalance(token, "100000", 20_000);
+      }
     },
-    { timeout: 120_000 },
+    { timeout: 420_000 },
   );
 
   test(
     "unauthenticated requests are rejected",
     async () => {
+      await ready();
       const bet = await call("/games/bet", {
         method: "POST",
         body: { amountCents: "1000" },
@@ -206,6 +225,7 @@ describe("crash game E2E", () => {
   test(
     "crashed rounds are independently verifiable",
     async () => {
+      await ready();
       const history = await call<Array<{ roundId: string }>>(
         "/games/rounds/history?page=1&limit=1",
       );

@@ -125,8 +125,12 @@ export async function waitFor<T>(
   throw new Error(`Timed out after ${timeoutMs}ms waiting for ${description}`);
 }
 
-/** Betting round with enough window left to place a bet reliably. */
-export function waitForFreshBettingRound(timeoutMs = 30_000): Promise<RoundSnapshot> {
+/**
+ * Betting round with enough window left to place a bet reliably.
+ * The default timeout covers a worst-case long round: the multiplier
+ * cap (10000x) takes ~154s to reach, plus cooldown and betting window.
+ */
+export function waitForFreshBettingRound(timeoutMs = 240_000): Promise<RoundSnapshot> {
   return waitFor(
     async () => {
       const round = await currentRound();
@@ -144,7 +148,7 @@ export function waitForFreshBettingRound(timeoutMs = 30_000): Promise<RoundSnaps
   );
 }
 
-export function waitForRunningRound(timeoutMs = 30_000): Promise<RoundSnapshot> {
+export function waitForRunningRound(timeoutMs = 60_000): Promise<RoundSnapshot> {
   return waitFor(
     async () => {
       const round = await currentRound();
