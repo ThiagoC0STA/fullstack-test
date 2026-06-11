@@ -4,6 +4,7 @@ services:
   # ---------------------------------------------------------------------------
   postgres:
     image: postgres:18.3-alpine
+    restart: unless-stopped
     ports:
       - "5432:5432"
     environment:
@@ -27,6 +28,7 @@ services:
   # ---------------------------------------------------------------------------
   rabbitmq:
     image: rabbitmq:4.2.4-management-alpine
+    restart: unless-stopped
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -46,6 +48,7 @@ services:
   # ---------------------------------------------------------------------------
   keycloak:
     image: quay.io/keycloak/keycloak:26.5.5
+    restart: unless-stopped
     command: start-dev --import-realm
     ports:
       - "8080:8080"
@@ -68,6 +71,7 @@ services:
   # ---------------------------------------------------------------------------
   kong:
     image: kong:3.9.1
+    restart: unless-stopped
     ports:
       - "8000:8000"
       - "8443:8443"
@@ -83,6 +87,11 @@ services:
       # dev machines accumulate cookies for ALL localhost apps; nginx's
       # default 8k header buffer would reject those requests with a 400
       KONG_NGINX_HTTP_LARGE_CLIENT_HEADER_BUFFERS: 8 24k
+      # when a service container is recreated it gets a new IP; Kong's
+      # default DNS cache would keep proxying to the dead one (502s)
+      # for up to an hour, so re-resolve within seconds instead
+      KONG_DNS_VALID_TTL: "5"
+      KONG_DNS_STALE_TTL: "5"
     volumes:
       - ./docker/kong:/kong:ro
     healthcheck:
@@ -103,6 +112,7 @@ services:
     build:
       context: .
       dockerfile: services/games/Dockerfile
+    restart: unless-stopped
     ports:
       - "4001:4001"
     environment:
@@ -134,6 +144,7 @@ services:
     build:
       context: .
       dockerfile: services/wallets/Dockerfile
+    restart: unless-stopped
     ports:
       - "4002:4002"
     environment:
@@ -164,6 +175,7 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+    restart: unless-stopped
     ports:
       - "3000:3000"
     depends_on:
