@@ -15,12 +15,14 @@ export default function GamePage() {
       <Header />
       <main className="mx-auto w-full max-w-[1200px] space-y-4 px-6 py-6">
         <RoundHistory />
-        <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
-          <div className="space-y-4">
+        {/* min-w-0 keeps wide children (chips, canvas) from inflating the
+            1fr track past the viewport and pushing the aside off-screen */}
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="min-w-0 space-y-4">
             <GameChart />
             <BetControls />
           </div>
-          <aside className="lg:sticky lg:top-6 lg:self-start">
+          <aside className="min-w-0 lg:sticky lg:top-6 lg:self-start">
             <LiveBets />
           </aside>
         </div>
