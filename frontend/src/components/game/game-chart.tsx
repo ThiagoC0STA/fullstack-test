@@ -84,11 +84,77 @@ function secondsStep(windowSeconds: number): number {
   return X_STEPS_SECONDS.find((step) => windowSeconds / step <= 5) ?? 300;
 }
 
+const GROWTH_RATE_PER_MS = 0.00006;
+
 function elapsedForMultiplier(multiplier: number): number {
   if (multiplier <= 100) {
     return 0;
   }
-  return Math.log(multiplier / 100) / 0.00006;
+  return Math.log(multiplier / 100) / GROWTH_RATE_PER_MS;
+}
+
+/**
+ * Continuous curve value (hundredths, unfloored) for drawing only. The
+ * authoritative m(t) floors to integer hundredths, which makes the line
+ * stair-step at low multipliers; the smooth value keeps the rendered
+ * curve buttery while money still uses the floored value everywhere.
+ */
+function smoothMultiplierAt(elapsedMs: number): number {
+  return 100 * Math.exp(GROWTH_RATE_PER_MS * elapsedMs);
+}
+
+const NICE_SECONDS = [2.5, 3, 4, 6, 8, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 320];
+// tight starting frame so the curve climbs from the first instant instead
+// of hugging the baseline inside an oversized 1.60x / 4s box
+const MIN_WINDOW_MS = 2500;
+const MIN_MAX_MULT = 118;
+
+/** Smallest tick candidate that leaves headroom above the live value. */
+function niceCeilMultiplier(multiplier: number): number {
+  const target = multiplier * 1.2;
+  const candidate = TICK_CANDIDATES.find((c) => c >= target);
+  return Math.max(MIN_MAX_MULT, candidate ?? Math.ceil(multiplier * 1.25));
+}
+
+/** Smallest nice window (ms) that leaves headroom past the elapsed time. */
+function niceCeilWindowMs(elapsedMs: number): number {
+  const targetSeconds = (elapsedMs * 1.1) / 1000;
+  const step = NICE_SECONDS.find((s) => s >= targetSeconds);
+  return Math.max(MIN_WINDOW_MS, (step ?? Math.ceil(targetSeconds)) * 1000);
+}
+
+interface SmoothScale {
+  key: string;
+  windowMs: number;
+  maxMult: number;
+}
+
+/**
+ * Eases the axes toward quantized "nice" bounds. Holding the bounds
+ * steady between thresholds keeps the rendered curve pixel-stable frame
+ * to frame (no sub-pixel shimmer); crossing a threshold glides once
+ * instead of rescaling every single frame. The Math.max floors keep the
+ * live tip from clipping out of view while the ease catches up.
+ */
+function easeScale(
+  ref: SmoothScale,
+  key: string,
+  elapsedMs: number,
+  multiplier: number,
+): { windowMs: number; maxMult: number } {
+  const targetWindow = niceCeilWindowMs(elapsedMs);
+  const targetMax = niceCeilMultiplier(multiplier);
+  if (ref.key !== key) {
+    ref.key = key;
+    ref.windowMs = targetWindow;
+    ref.maxMult = targetMax;
+  } else {
+    ref.windowMs += (targetWindow - ref.windowMs) * 0.16;
+    ref.maxMult += (targetMax - ref.maxMult) * 0.16;
+  }
+  ref.windowMs = Math.max(ref.windowMs, elapsedMs * 1.04, MIN_WINDOW_MS);
+  ref.maxMult = Math.max(ref.maxMult, multiplier * 1.06, MIN_MAX_MULT);
+  return { windowMs: ref.windowMs, maxMult: ref.maxMult };
 }
 
 /**
@@ -102,6 +168,8 @@ export function GameChart() {
   const particlesRef = useRef<Particle[]>([]);
   const prevPhaseRef = useRef<string>("idle");
   const crashFlashRef = useRef(0);
+  const scaleRef = useRef<SmoothScale>({ key: "", windowMs: 4000, maxMult: 160 });
+  const elapsedRef = useRef<{ key: string; value: number }>({ key: "", value: 0 });
 
   useEffect(() => {
     let frame = 0;
@@ -177,18 +245,38 @@ export function GameChart() {
           state.history[0] ?? null,
         );
       } else if (state.phase === "running" && state.startedAtMs) {
-        const elapsed = Math.max(0, now - state.startedAtMs);
+        const key = state.roundId ?? "running";
+        const rawElapsed = Math.max(0, now - state.startedAtMs);
+        // a skew correction must never pull the curve backwards
+        if (elapsedRef.current.key !== key) {
+          elapsedRef.current = { key, value: rawElapsed };
+        } else {
+          elapsedRef.current.value = Math.max(elapsedRef.current.value, rawElapsed);
+        }
+        const elapsed = elapsedRef.current.value;
+        const multiplier = multiplierAtElapsedMs(elapsed);
+        const scale = easeScale(scaleRef.current, key, elapsed, multiplier);
         drawRound(
           ctx,
           width,
           height,
           elapsed,
-          multiplierAtElapsedMs(elapsed),
+          multiplier,
           false,
           collectCashoutPins(),
+          scale.windowMs,
+          scale.maxMult,
         );
       } else if (state.phase === "crashed" && state.crashPointHundredths) {
+        // keep the running key so the axes glide into the final framing
+        const key = state.roundId ?? "running";
         const crashElapsed = elapsedForMultiplier(state.crashPointHundredths);
+        const scale = easeScale(
+          scaleRef.current,
+          key,
+          crashElapsed,
+          state.crashPointHundredths,
+        );
         const tip = drawRound(
           ctx,
           width,
@@ -197,6 +285,8 @@ export function GameChart() {
           state.crashPointHundredths,
           true,
           collectCashoutPins(),
+          scale.windowMs,
+          scale.maxMult,
         );
         if (particlesRef.current.length === 0 && crashFlashRef.current === 1 && tip) {
           spawnParticles(tip[0], tip[1]);
@@ -298,6 +388,10 @@ function drawChrome(
   ctx.font = mono(10);
   for (const tick of multiplierTicks(maxMultiplier)) {
     const y = yFor(tick);
+    // on a wide scale the lowest tick can sit on top of the 1.00x label
+    if (y > baseY - 14) {
+      continue;
+    }
     ctx.strokeStyle = COLORS.grid;
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -343,7 +437,7 @@ function traceCurve(
   for (let i = 0; i <= STEPS; i++) {
     const t = (i / STEPS) * elapsedMs;
     const x = scale.xFor(t);
-    const y = scale.yFor(Math.min(multiplierAtElapsedMs(t), multiplier));
+    const y = scale.yFor(Math.min(smoothMultiplierAt(t), multiplier));
     if (i === 0) {
       ctx.moveTo(x, y);
     } else {
@@ -370,8 +464,8 @@ function drawBetting(
     ctx,
     width,
     height,
-    Math.max(4000, ghostElapsed * 1.05),
-    Math.max(160, ghostCrash * 1.25),
+    Math.max(MIN_WINDOW_MS, ghostElapsed * 1.05),
+    Math.max(MIN_MAX_MULT, ghostCrash * 1.25),
   );
 
   if (lastRound) {
@@ -441,23 +535,22 @@ function drawRound(
   multiplier: number,
   crashed: boolean,
   cashouts: CashoutPin[] = [],
+  windowMs = Math.max(MIN_WINDOW_MS, elapsedMs * 1.05),
+  maxMult = Math.max(MIN_MAX_MULT, multiplier * 1.25),
 ): [number, number] | null {
   const color = crashed ? COLORS.danger : COLORS.accent;
-  const scale = drawChrome(
-    ctx,
-    width,
-    height,
-    Math.max(4000, elapsedMs * 1.05),
-    Math.max(160, multiplier * 1.25),
-  );
+  const scale = drawChrome(ctx, width, height, windowMs, maxMult);
 
+  // the curve is drawn from the smooth (unfloored) value so it never
+  // stair-steps; at the crash tip the two agree exactly
+  const curveTip = crashed ? multiplier : smoothMultiplierAt(elapsedMs);
   const tipX = scale.xFor(elapsedMs);
-  const tipY = scale.yFor(multiplier);
+  const tipY = scale.yFor(curveTip);
 
   // area under the curve
   ctx.beginPath();
   ctx.moveTo(PAD.left, scale.baseY);
-  traceCurve(ctx, scale, elapsedMs, multiplier);
+  traceCurve(ctx, scale, elapsedMs, curveTip);
   ctx.lineTo(tipX, scale.baseY);
   ctx.closePath();
   const fill = ctx.createLinearGradient(0, PAD.top, 0, scale.baseY);
@@ -466,12 +559,14 @@ function drawRound(
   ctx.fillStyle = fill;
   ctx.fill();
 
-  // the curve
+  // the curve — same smooth tip as the fill and the dot, so the stroke
+  // reaches the marker exactly instead of flattening on the floored value
   ctx.beginPath();
-  traceCurve(ctx, scale, elapsedMs, multiplier);
+  traceCurve(ctx, scale, elapsedMs, curveTip);
   ctx.strokeStyle = color;
   ctx.lineWidth = 2;
   ctx.lineJoin = "round";
+  ctx.lineCap = "round";
   ctx.stroke();
 
   // every cashout of the round pinned on the curve; mine shows payout
