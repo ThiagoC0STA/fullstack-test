@@ -103,58 +103,28 @@ function smoothMultiplierAt(elapsedMs: number): number {
   return 100 * Math.exp(GROWTH_RATE_PER_MS * elapsedMs);
 }
 
-const NICE_SECONDS = [2.5, 3, 4, 6, 8, 10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 320];
-// tight starting frame so the curve climbs from the first instant instead
-// of hugging the baseline inside an oversized 1.60x / 4s box
+// tight starting frame so the curve climbs from the first instant
+// instead of hugging the baseline inside an oversized box
 const MIN_WINDOW_MS = 2500;
 const MIN_MAX_MULT = 118;
-
-/** Smallest tick candidate that leaves headroom above the live value. */
-function niceCeilMultiplier(multiplier: number): number {
-  const target = multiplier * 1.2;
-  const candidate = TICK_CANDIDATES.find((c) => c >= target);
-  return Math.max(MIN_MAX_MULT, candidate ?? Math.ceil(multiplier * 1.25));
-}
-
-/** Smallest nice window (ms) that leaves headroom past the elapsed time. */
-function niceCeilWindowMs(elapsedMs: number): number {
-  const targetSeconds = (elapsedMs * 1.1) / 1000;
-  const step = NICE_SECONDS.find((s) => s >= targetSeconds);
-  return Math.max(MIN_WINDOW_MS, (step ?? Math.ceil(targetSeconds)) * 1000);
-}
-
-interface SmoothScale {
-  key: string;
-  windowMs: number;
-  maxMult: number;
-}
+const WINDOW_HEADROOM = 1.12;
+const MULT_HEADROOM = 1.28;
 
 /**
- * Eases the axes toward quantized "nice" bounds. Holding the bounds
- * steady between thresholds keeps the rendered curve pixel-stable frame
- * to frame (no sub-pixel shimmer); crossing a threshold glides once
- * instead of rescaling every single frame. The Math.max floors keep the
- * live tip from clipping out of view while the ease catches up.
+ * Axes that grow continuously and self-similarly with the round. The
+ * live tip stays at a fixed fraction of the frame, so the curve scales
+ * smoothly every frame with no quantization thresholds to jump across
+ * (those read as the curve "teleporting"). The floors keep an oversized
+ * frame at the very start from flattening the early curve.
  */
-function easeScale(
-  ref: SmoothScale,
-  key: string,
+function liveScale(
   elapsedMs: number,
   multiplier: number,
 ): { windowMs: number; maxMult: number } {
-  const targetWindow = niceCeilWindowMs(elapsedMs);
-  const targetMax = niceCeilMultiplier(multiplier);
-  if (ref.key !== key) {
-    ref.key = key;
-    ref.windowMs = targetWindow;
-    ref.maxMult = targetMax;
-  } else {
-    ref.windowMs += (targetWindow - ref.windowMs) * 0.16;
-    ref.maxMult += (targetMax - ref.maxMult) * 0.16;
-  }
-  ref.windowMs = Math.max(ref.windowMs, elapsedMs * 1.04, MIN_WINDOW_MS);
-  ref.maxMult = Math.max(ref.maxMult, multiplier * 1.06, MIN_MAX_MULT);
-  return { windowMs: ref.windowMs, maxMult: ref.maxMult };
+  return {
+    windowMs: Math.max(MIN_WINDOW_MS, elapsedMs * WINDOW_HEADROOM),
+    maxMult: Math.max(MIN_MAX_MULT, multiplier * MULT_HEADROOM),
+  };
 }
 
 /**
@@ -168,7 +138,6 @@ export function GameChart() {
   const particlesRef = useRef<Particle[]>([]);
   const prevPhaseRef = useRef<string>("idle");
   const crashFlashRef = useRef(0);
-  const scaleRef = useRef<SmoothScale>({ key: "", windowMs: 4000, maxMult: 160 });
   const elapsedRef = useRef<{ key: string; value: number }>({ key: "", value: 0 });
 
   useEffect(() => {
@@ -255,7 +224,7 @@ export function GameChart() {
         }
         const elapsed = elapsedRef.current.value;
         const multiplier = multiplierAtElapsedMs(elapsed);
-        const scale = easeScale(scaleRef.current, key, elapsed, multiplier);
+        const scale = liveScale(elapsed, multiplier);
         drawRound(
           ctx,
           width,
@@ -268,15 +237,8 @@ export function GameChart() {
           scale.maxMult,
         );
       } else if (state.phase === "crashed" && state.crashPointHundredths) {
-        // keep the running key so the axes glide into the final framing
-        const key = state.roundId ?? "running";
         const crashElapsed = elapsedForMultiplier(state.crashPointHundredths);
-        const scale = easeScale(
-          scaleRef.current,
-          key,
-          crashElapsed,
-          state.crashPointHundredths,
-        );
+        const scale = liveScale(crashElapsed, state.crashPointHundredths);
         const tip = drawRound(
           ctx,
           width,
@@ -535,8 +497,8 @@ function drawRound(
   multiplier: number,
   crashed: boolean,
   cashouts: CashoutPin[] = [],
-  windowMs = Math.max(MIN_WINDOW_MS, elapsedMs * 1.05),
-  maxMult = Math.max(MIN_MAX_MULT, multiplier * 1.25),
+  windowMs = Math.max(MIN_WINDOW_MS, elapsedMs * WINDOW_HEADROOM),
+  maxMult = Math.max(MIN_MAX_MULT, multiplier * MULT_HEADROOM),
 ): [number, number] | null {
   const color = crashed ? COLORS.danger : COLORS.accent;
   const scale = drawChrome(ctx, width, height, windowMs, maxMult);
