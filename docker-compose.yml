@@ -79,6 +79,9 @@ services:
       KONG_PROXY_ERROR_LOG: /dev/stderr
       KONG_ADMIN_ERROR_LOG: /dev/stderr
       KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      # dev machines accumulate cookies for ALL localhost apps; nginx's
+      # default 8k header buffer would reject those requests with a 400
+      KONG_NGINX_HTTP_LARGE_CLIENT_HEADER_BUFFERS: 8 24k
     volumes:
       - ./docker/kong:/kong:ro
     healthcheck:

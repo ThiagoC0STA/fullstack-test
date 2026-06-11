@@ -1,13 +1,18 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { multiplierAtElapsedMs, multiplierToDecimal } from "@crash/contracts";
+import {
+  multiplierAtElapsedMs,
+  multiplierToDecimal,
+  type RoundHistoryItem,
+} from "@crash/contracts";
 import { useGameStore } from "@/stores/game-store";
 
 const COLORS = {
   grid: "#1d1d1d",
   axis: "#2c2c2c",
   label: "#5d5d5d",
+  ghost: "#3a3a3a",
   ink: "#ededed",
   ink2: "#8f8f8f",
   accent: "#3ecf8e",
@@ -29,6 +34,13 @@ interface Particle {
   vx: number;
   vy: number;
   life: number;
+}
+
+interface Scale {
+  xFor: (t: number) => number;
+  yFor: (m: number) => number;
+  baseY: number;
+  windowMs: number;
 }
 
 let cachedMonoFamily: string | null = null;
@@ -64,11 +76,18 @@ function secondsStep(windowSeconds: number): number {
   return X_STEPS_SECONDS.find((step) => windowSeconds / step <= 5) ?? 300;
 }
 
+function elapsedForMultiplier(multiplier: number): number {
+  if (multiplier <= 100) {
+    return 0;
+  }
+  return Math.log(multiplier / 100) / 0.00006;
+}
+
 /**
- * The round, rendered like a real market instrument: dynamic axes with
- * nice multiplier/time ticks, a thin live curve and a typographic
- * readout. State is read imperatively from the store every frame so
- * React never re-renders during the animation.
+ * The round, rendered like a market instrument: dynamic axes, a thin
+ * live curve, the ghost of the previous round during the betting
+ * window and session stats. State is read imperatively from the store
+ * every frame so React never re-renders during the animation.
  */
 export function GameChart() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -138,8 +157,17 @@ export function GameChart() {
       }
       prevPhaseRef.current = state.phase;
 
+      drawSessionStats(ctx, width, state.history);
+
       if (state.phase === "betting" && state.bettingEndsAtMs) {
-        drawBetting(ctx, width, height, state.bettingEndsAtMs - now, state.seedHash);
+        drawBetting(
+          ctx,
+          width,
+          height,
+          state.bettingEndsAtMs - now,
+          state.seedHash,
+          state.history[0] ?? null,
+        );
       } else if (state.phase === "running" && state.startedAtMs) {
         const elapsed = Math.max(0, now - state.startedAtMs);
         drawRound(ctx, width, height, elapsed, multiplierAtElapsedMs(elapsed), false);
@@ -159,7 +187,6 @@ export function GameChart() {
         drawParticles(ctx);
       } else {
         drawIdle(ctx, width, height);
-        particlesRef.current = [];
       }
 
       if (state.phase !== "crashed") {
@@ -189,13 +216,6 @@ export function GameChart() {
   );
 }
 
-function elapsedForMultiplier(multiplier: number): number {
-  if (multiplier <= 100) {
-    return 0;
-  }
-  return Math.log(multiplier / 100) / 0.00006;
-}
-
 function drawIdle(ctx: CanvasRenderingContext2D, width: number, height: number) {
   ctx.textAlign = "center";
   ctx.fillStyle = COLORS.ink2;
@@ -203,63 +223,44 @@ function drawIdle(ctx: CanvasRenderingContext2D, width: number, height: number) 
   ctx.fillText("Conectando à mesa…", width / 2, height / 2);
 }
 
-function drawBetting(
+/** Session stats in the top-left corner: last and best crash points. */
+function drawSessionStats(
   ctx: CanvasRenderingContext2D,
   width: number,
-  height: number,
-  remainingMs: number,
-  seedHash: string | null,
+  history: RoundHistoryItem[],
 ) {
-  const remaining = Math.max(0, remainingMs);
-  const centerY = height / 2;
-
-  ctx.textAlign = "center";
-  ctx.fillStyle = COLORS.label;
-  ctx.font = mono(11, 500);
-  ctx.letterSpacing = "3px";
-  ctx.fillText("PRÓXIMA RODADA", width / 2, centerY - 56);
-  ctx.letterSpacing = "0px";
-
-  ctx.fillStyle = COLORS.ink;
-  ctx.font = mono(60, 600);
-  ctx.fillText(`${(remaining / 1000).toFixed(1)}s`, width / 2, centerY + 8);
-
-  const barWidth = 220;
-  const progress = Math.min(1, remaining / 10_000);
-  ctx.fillStyle = "#242424";
-  ctx.fillRect(width / 2 - barWidth / 2, centerY + 36, barWidth, 2);
-  ctx.fillStyle = COLORS.accent;
-  ctx.fillRect(width / 2 - barWidth / 2, centerY + 36, barWidth * progress, 2);
-
-  if (seedHash) {
-    ctx.fillStyle = COLORS.label;
-    ctx.font = mono(10);
-    ctx.fillText(
-      `compromisso sha256 ${seedHash.slice(0, 16)}…${seedHash.slice(-8)}`,
-      width / 2,
-      centerY + 64,
-    );
+  const last = history[0];
+  if (!last) {
+    return;
   }
+  const best = history.reduce(
+    (max, round) => Math.max(max, round.crashPointHundredths),
+    0,
+  );
+  ctx.textAlign = "left";
+  ctx.font = mono(10);
+  ctx.fillStyle = COLORS.label;
+  ctx.fillText(
+    `ÚLTIMA ${multiplierToDecimal(last.crashPointHundredths)}×   ·   MÁX ${multiplierToDecimal(best)}×`,
+    PAD.left,
+    19,
+  );
 }
 
-/** Returns the tip position so the crash can anchor its particles. */
-function drawRound(
+/** Grid, axes and tick labels; returns the scale helpers. */
+function drawChrome(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  elapsedMs: number,
-  multiplier: number,
-  crashed: boolean,
-): [number, number] | null {
+  windowMs: number,
+  maxMultiplier: number,
+): Scale {
   const plotWidth = width - PAD.left - PAD.right;
   const plotHeight = height - PAD.top - PAD.bottom;
-  const windowMs = Math.max(4000, elapsedMs * 1.05);
-  const maxMultiplier = Math.max(160, multiplier * 1.25);
-  const color = crashed ? COLORS.danger : COLORS.accent;
-
   const xFor = (t: number) => PAD.left + (t / windowMs) * plotWidth;
   const yFor = (m: number) =>
     height - PAD.bottom - ((m - 100) / (maxMultiplier - 100)) * plotHeight;
+  const baseY = yFor(100);
 
   ctx.textAlign = "right";
   ctx.font = mono(10);
@@ -275,7 +276,6 @@ function drawRound(
     ctx.fillText(`${multiplierToDecimal(tick)}×`, PAD.left - 10, y + 3);
   }
 
-  const baseY = yFor(100);
   ctx.strokeStyle = COLORS.axis;
   ctx.beginPath();
   ctx.moveTo(PAD.left, baseY);
@@ -298,19 +298,136 @@ function drawRound(
     ctx.fillText(`${s}s`, x, height - PAD.bottom + 16);
   }
 
-  // area under the curve
+  return { xFor, yFor, baseY, windowMs };
+}
+
+function traceCurve(
+  ctx: CanvasRenderingContext2D,
+  scale: Scale,
+  elapsedMs: number,
+  multiplier: number,
+) {
   const STEPS = 72;
-  ctx.beginPath();
-  ctx.moveTo(PAD.left, baseY);
   for (let i = 0; i <= STEPS; i++) {
     const t = (i / STEPS) * elapsedMs;
-    ctx.lineTo(xFor(t), yFor(Math.min(multiplierAtElapsedMs(t), multiplier)));
+    const x = scale.xFor(t);
+    const y = scale.yFor(Math.min(multiplierAtElapsedMs(t), multiplier));
+    if (i === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
   }
-  const tipX = xFor(elapsedMs);
-  const tipY = yFor(multiplier);
-  ctx.lineTo(tipX, baseY);
+}
+
+/**
+ * Betting window: the previous round stays on screen as a ghost curve
+ * so the chart is never an empty box, with the countdown on top.
+ */
+function drawBetting(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  remainingMs: number,
+  seedHash: string | null,
+  lastRound: RoundHistoryItem | null,
+) {
+  const ghostCrash = lastRound?.crashPointHundredths ?? 200;
+  const ghostElapsed = Math.max(1500, elapsedForMultiplier(ghostCrash));
+  const scale = drawChrome(
+    ctx,
+    width,
+    height,
+    Math.max(4000, ghostElapsed * 1.05),
+    Math.max(160, ghostCrash * 1.25),
+  );
+
+  if (lastRound) {
+    ctx.beginPath();
+    traceCurve(ctx, scale, ghostElapsed, ghostCrash);
+    ctx.strokeStyle = COLORS.ghost;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const ghostX = scale.xFor(ghostElapsed);
+    const ghostY = scale.yFor(ghostCrash);
+    ctx.fillStyle = COLORS.ghost;
+    ctx.beginPath();
+    ctx.arc(ghostX, ghostY, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.textAlign = "right";
+    ctx.font = mono(10);
+    ctx.fillStyle = COLORS.label;
+    ctx.fillText(
+      `${multiplierToDecimal(ghostCrash)}×`,
+      Math.min(ghostX + 4, width - PAD.right),
+      ghostY - 8,
+    );
+  }
+
+  const remaining = Math.max(0, remainingMs);
+  const centerX = width / 2;
+  const centerY = height / 2 - 12;
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = COLORS.label;
+  ctx.font = mono(11, 500);
+  ctx.letterSpacing = "3px";
+  ctx.fillText("PRÓXIMA RODADA", centerX, centerY - 56);
+  ctx.letterSpacing = "0px";
+
+  ctx.fillStyle = COLORS.ink;
+  ctx.font = mono(64, 600);
+  ctx.fillText(`${(remaining / 1000).toFixed(1)}s`, centerX, centerY + 8);
+
+  const barWidth = 220;
+  const progress = Math.min(1, remaining / 10_000);
+  ctx.fillStyle = "#242424";
+  ctx.fillRect(centerX - barWidth / 2, centerY + 34, barWidth, 2);
+  ctx.fillStyle = COLORS.accent;
+  ctx.fillRect(centerX - barWidth / 2, centerY + 34, barWidth * progress, 2);
+
+  if (seedHash) {
+    ctx.fillStyle = COLORS.label;
+    ctx.font = mono(10);
+    ctx.fillText(
+      `compromisso sha256 ${seedHash.slice(0, 16)}…${seedHash.slice(-8)}`,
+      centerX,
+      centerY + 60,
+    );
+  }
+}
+
+/** Returns the tip position so the crash can anchor its particles. */
+function drawRound(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  elapsedMs: number,
+  multiplier: number,
+  crashed: boolean,
+): [number, number] | null {
+  const color = crashed ? COLORS.danger : COLORS.accent;
+  const scale = drawChrome(
+    ctx,
+    width,
+    height,
+    Math.max(4000, elapsedMs * 1.05),
+    Math.max(160, multiplier * 1.25),
+  );
+
+  const tipX = scale.xFor(elapsedMs);
+  const tipY = scale.yFor(multiplier);
+
+  // area under the curve
+  ctx.beginPath();
+  ctx.moveTo(PAD.left, scale.baseY);
+  traceCurve(ctx, scale, elapsedMs, multiplier);
+  ctx.lineTo(tipX, scale.baseY);
   ctx.closePath();
-  const fill = ctx.createLinearGradient(0, PAD.top, 0, baseY);
+  const fill = ctx.createLinearGradient(0, PAD.top, 0, scale.baseY);
   fill.addColorStop(0, crashed ? COLORS.dangerArea : COLORS.accentArea);
   fill.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = fill;
@@ -318,16 +435,7 @@ function drawRound(
 
   // the curve
   ctx.beginPath();
-  for (let i = 0; i <= STEPS; i++) {
-    const t = (i / STEPS) * elapsedMs;
-    const x = xFor(t);
-    const y = yFor(Math.min(multiplierAtElapsedMs(t), multiplier));
-    if (i === 0) {
-      ctx.moveTo(x, y);
-    } else {
-      ctx.lineTo(x, y);
-    }
-  }
+  traceCurve(ctx, scale, elapsedMs, multiplier);
   ctx.strokeStyle = color;
   ctx.lineWidth = 2;
   ctx.lineJoin = "round";
@@ -347,8 +455,8 @@ function drawRound(
   ctx.fill();
 
   // typographic readout
-  const readoutX = PAD.left + plotWidth / 2;
-  const readoutY = PAD.top + plotHeight * 0.34;
+  const readoutX = PAD.left + (width - PAD.left - PAD.right) / 2;
+  const readoutY = PAD.top + (height - PAD.top - PAD.bottom) * 0.34;
   ctx.textAlign = "center";
   if (crashed) {
     ctx.fillStyle = COLORS.danger;

@@ -39,9 +39,32 @@ export function LiveBets() {
         <span className="font-mono text-xs text-ink-3">{visible.length}</span>
       </CardHeader>
       {visible.length === 0 ? (
-        <p className="py-12 text-center text-[13px] text-ink-3">
-          Ninguém apostou nesta rodada
-        </p>
+        <div className="flex flex-col items-center gap-3 py-12">
+          <svg
+            width="48"
+            height="48"
+            viewBox="0 0 48 48"
+            fill="none"
+            aria-hidden
+            className="text-edge-strong"
+          >
+            <path
+              d="M6 36 L18 26 L26 30 L42 12"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <circle cx="42" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M6 42 H42" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+          <div className="text-center">
+            <p className="text-[13px] font-medium text-ink-2">Mesa vazia</p>
+            <p className="mt-0.5 text-xs text-ink-3">
+              Seja o primeiro a apostar nesta rodada
+            </p>
+          </div>
+        </div>
       ) : (
         <ul className="min-h-0 flex-1 divide-y divide-edge overflow-y-auto">
           {visible.map((bet) => {
