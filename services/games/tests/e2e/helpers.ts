@@ -129,6 +129,10 @@ export async function waitFor<T>(
  * Betting round with enough window left to place a bet reliably.
  * The default timeout covers a worst-case long round: the multiplier
  * cap (10000x) takes ~154s to reach, plus cooldown and betting window.
+ *
+ * Rounds where the test player already holds a live bet are skipped:
+ * consecutive tests can otherwise land in the SAME betting window the
+ * previous test bet in, and every place-bet would 409 as a duplicate.
  */
 export function waitForFreshBettingRound(timeoutMs = 240_000): Promise<RoundSnapshot> {
   return waitFor(
@@ -137,7 +141,10 @@ export function waitForFreshBettingRound(timeoutMs = 240_000): Promise<RoundSnap
       if (
         round?.phase === "betting" &&
         round.bettingEndsAt &&
-        Date.parse(round.bettingEndsAt) - Date.parse(round.serverTime) > 3_000
+        Date.parse(round.bettingEndsAt) - Date.parse(round.serverTime) > 3_000 &&
+        !round.bets.some(
+          (bet) => bet.playerId === TEST_PLAYER_ID && bet.status !== "rejected",
+        )
       ) {
         return round;
       }

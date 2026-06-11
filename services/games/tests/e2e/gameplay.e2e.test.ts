@@ -57,6 +57,9 @@ describe("crash game E2E", () => {
 
       await waitForBetStatus(token, betId, ["active"]);
       await waitForRunningRound();
+      // m(t) needs ~166ms to leave 1.00x; without this wait an instant
+      // cashout could legitimately pay exactly the stake back
+      await new Promise((resolve) => setTimeout(resolve, 400));
 
       const cashedOut = await waitFor(
         async () => {
@@ -72,8 +75,10 @@ describe("crash game E2E", () => {
       );
 
       expect(cashedOut.status).toBe("cashed_out");
+      // the multiplier must actually have grown past 1.00x
+      expect(cashedOut.cashoutMultiplierHundredths ?? 0).toBeGreaterThan(100);
       const payout = cashedOut.payoutCents as string;
-      expect(compareCents(payout, "1000")).toBeGreaterThanOrEqual(0);
+      expect(compareCents(payout, "1000")).toBeGreaterThan(0);
 
       const expected = addCents(subtractCents(before, "1000"), payout);
       const wallet = await waitForBalance(token, expected);
