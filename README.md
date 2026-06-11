@@ -123,10 +123,14 @@ cd services/games && bun test tests/e2e    # requer docker:up
 
 Cobertura de comportamento: transições e violações de invariantes do Round, cashout exato ao centavo, crash instantâneo, dedup de redelivery (exactly-once), compensação de refund, recovery pós-restart, encadeamento da hash chain, snapshots congelados do algoritmo.
 
+Cobertura medida (`bun test --coverage`): **games 93% / wallets 90% / contracts 100%** de linhas.
+
 ## Estrutura
 
 ```
 packages/contracts/      # @crash/contracts: dinheiro, curva, eventos broker/WS, views
+packages/platform/       # @crash/platform: guard JWT/JWKS, outbox publisher,
+                         #   inbox/outbox records, clock e helpers de config
 services/games/          # engine, rounds, bets, provably fair, WS, saga (lado game)
 services/wallets/        # carteira, ledger append-only, saga (lado wallet)
 frontend/                # Next.js 16: jogo, OIDC PKCE, verificação no browser

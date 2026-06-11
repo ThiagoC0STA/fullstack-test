@@ -2,11 +2,19 @@
 
 import { useEffect, useRef } from "react";
 import {
+  centsToDecimal,
   multiplierAtElapsedMs,
   multiplierToDecimal,
   type RoundHistoryItem,
 } from "@crash/contracts";
+import { useAuthStore } from "@/stores/auth-store";
 import { useGameStore } from "@/stores/game-store";
+
+interface CashoutPin {
+  multiplier: number;
+  mine: boolean;
+  payoutCents: string | null;
+}
 
 const COLORS = {
   grid: "#1d1d1d",
@@ -170,7 +178,15 @@ export function GameChart() {
         );
       } else if (state.phase === "running" && state.startedAtMs) {
         const elapsed = Math.max(0, now - state.startedAtMs);
-        drawRound(ctx, width, height, elapsed, multiplierAtElapsedMs(elapsed), false);
+        drawRound(
+          ctx,
+          width,
+          height,
+          elapsed,
+          multiplierAtElapsedMs(elapsed),
+          false,
+          collectCashoutPins(),
+        );
       } else if (state.phase === "crashed" && state.crashPointHundredths) {
         const crashElapsed = elapsedForMultiplier(state.crashPointHundredths);
         const tip = drawRound(
@@ -180,6 +196,7 @@ export function GameChart() {
           crashElapsed,
           state.crashPointHundredths,
           true,
+          collectCashoutPins(),
         );
         if (particlesRef.current.length === 0 && crashFlashRef.current === 1 && tip) {
           spawnParticles(tip[0], tip[1]);
@@ -214,6 +231,21 @@ export function GameChart() {
       </p>
     </div>
   );
+}
+
+/** Cashouts of the current round, ready to be pinned on the curve. */
+function collectCashoutPins(): CashoutPin[] {
+  const me = useAuthStore.getState().playerId;
+  return useGameStore
+    .getState()
+    .bets.filter(
+      (bet) => bet.status === "cashed_out" && bet.cashoutMultiplierHundredths !== null,
+    )
+    .map((bet) => ({
+      multiplier: bet.cashoutMultiplierHundredths as number,
+      mine: bet.playerId === me,
+      payoutCents: bet.payoutCents,
+    }));
 }
 
 function drawIdle(ctx: CanvasRenderingContext2D, width: number, height: number) {
@@ -408,6 +440,7 @@ function drawRound(
   elapsedMs: number,
   multiplier: number,
   crashed: boolean,
+  cashouts: CashoutPin[] = [],
 ): [number, number] | null {
   const color = crashed ? COLORS.danger : COLORS.accent;
   const scale = drawChrome(
@@ -441,6 +474,24 @@ function drawRound(
   ctx.lineJoin = "round";
   ctx.stroke();
 
+  // every cashout of the round pinned on the curve; mine shows payout
+  for (const pin of cashouts) {
+    if (pin.multiplier > multiplier) {
+      continue;
+    }
+    const pinX = scale.xFor(elapsedForMultiplier(pin.multiplier));
+    const pinY = scale.yFor(pin.multiplier);
+    ctx.fillStyle = COLORS.accent;
+    ctx.beginPath();
+    ctx.arc(pinX, pinY, pin.mine ? 4 : 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    if (pin.mine && pin.payoutCents) {
+      ctx.textAlign = "center";
+      ctx.font = mono(10, 600);
+      ctx.fillText(`$ ${centsToDecimal(pin.payoutCents)}`, pinX, pinY - 10);
+    }
+  }
+
   // tip marker with a soft halo
   const halo = ctx.createRadialGradient(tipX, tipY, 0, tipX, tipY, 12);
   halo.addColorStop(0, crashed ? "rgba(229,72,77,0.25)" : "rgba(62,207,142,0.25)");
@@ -465,9 +516,12 @@ function drawRound(
     ctx.fillText("CRASH", readoutX, readoutY - 48);
     ctx.letterSpacing = "0px";
   }
-  ctx.fillStyle = crashed ? COLORS.danger : COLORS.ink;
+  ctx.fillStyle = crashed ? COLORS.danger : COLORS.accent;
   ctx.font = mono(72, 600);
+  ctx.shadowColor = crashed ? COLORS.danger : COLORS.accent;
+  ctx.shadowBlur = 16;
   ctx.fillText(`${multiplierToDecimal(multiplier)}×`, readoutX, readoutY);
+  ctx.shadowBlur = 0;
   ctx.fillStyle = COLORS.label;
   ctx.font = mono(12);
   ctx.fillText(`${(elapsedMs / 1000).toFixed(1)}s`, readoutX, readoutY + 28);

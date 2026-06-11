@@ -181,7 +181,7 @@ export function BetControls() {
             )}
             {myBet?.status === "active" && phase === "running" && (
               <Button
-                className="w-full font-mono md:min-w-44"
+                className="w-full animate-cash-pulse font-mono md:min-w-44"
                 disabled={cashOut.isPending}
                 onClick={() => cashOut.mutate()}
               >

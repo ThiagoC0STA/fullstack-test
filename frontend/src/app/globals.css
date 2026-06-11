@@ -18,10 +18,15 @@
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
 
   --animate-shimmer: shimmer 1.8s ease-in-out infinite;
+  --animate-cash-pulse: cash-pulse 1.4s ease-in-out infinite;
 
   @keyframes shimmer {
     from { background-position: 200% 0; }
     to { background-position: -200% 0; }
+  }
+  @keyframes cash-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(62, 207, 142, 0.35); }
+    50% { box-shadow: 0 0 0 6px rgba(62, 207, 142, 0); }
   }
 }
 
