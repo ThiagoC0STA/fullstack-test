@@ -117,17 +117,16 @@ POST /games/bet
 ## Testes
 
 ```bash
-cd packages/contracts && bun test tests    # dinheiro (BigInt) + curva
-cd services/games && bun test tests/unit   # Round/Bet, engine, saga, provably fair
-cd services/wallets && bun test tests/unit # Wallet, ledger, use cases exactly-once
-cd frontend && bun test tests              # store + verificação WebCrypto (snapshots do backend)
-cd services/games && bun test tests/e2e    # gameplay/saga via Kong+Keycloak+RabbitMQ (requer docker:up)
-cd frontend && bun run test:e2e            # Playwright: login -> aposta -> cashout no browser (requer docker:up)
+bun run test          # todos os unitários: contracts + games + wallets + frontend (131 testes)
+bun run test:e2e      # E2E de API: gameplay/saga via Kong+Keycloak+RabbitMQ (requer docker:up)
+cd frontend && bun run test:e2e   # Playwright: login -> aposta -> cashout no browser (requer docker:up)
 ```
 
-Cobertura de comportamento: transições e violações de invariantes do Round, cashout exato ao centavo, crash instantâneo, dedup de redelivery (exactly-once), compensação de refund, recovery pós-restart, encadeamento da hash chain, snapshots congelados do algoritmo.
+Por workspace: `bun test tests` em `packages/contracts` (dinheiro BigInt + curva), `bun test tests/unit` em `services/games` (Round/Bet, engine, saga, provably fair) e `services/wallets` (Wallet, ledger, exactly-once), `bun test tests` em `frontend` (store + verificação WebCrypto com snapshots do backend).
 
-Cobertura medida (`bun test --coverage`): **games 93% / wallets 90% / contracts 100%** de linhas.
+Cobertura de comportamento: transições e violações de invariantes do Round, cashout exato ao centavo, crash instantâneo, dedup de redelivery (exactly-once), compensação de refund, rollback em memória quando a transação falha, recovery pós-restart, encadeamento da hash chain, snapshots congelados do algoritmo.
+
+Cobertura medida (`bun test --coverage` nos unitários): **games 93% / wallets 90% / contracts 100%** de linhas das camadas de domínio e aplicação — infraestrutura e apresentação (gateways, consumers, controllers) são exercitadas pelos E2E, não entram nesse número.
 
 ## Estrutura
 
