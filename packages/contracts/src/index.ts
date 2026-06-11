@@ -1,4 +1,5 @@
 export * from "./money";
+export * from "./curve";
 export * from "./messaging/topology";
 export * from "./messaging/envelope";
 export * from "./messaging/wallet-messages";

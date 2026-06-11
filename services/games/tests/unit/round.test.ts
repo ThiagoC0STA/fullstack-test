@@ -10,7 +10,7 @@ import {
   NoActiveBetError,
   RoundNotRunningError,
 } from "../../src/domain/errors";
-import { multiplierAtElapsedMs } from "../../src/domain/multiplier-curve";
+import { multiplierAtElapsedMs } from "@crash/contracts";
 import { sha256Hex } from "../../src/domain/provably-fair/hashing";
 import { Round } from "../../src/domain/round";
 

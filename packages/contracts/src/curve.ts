@@ -1,4 +1,4 @@
-import { MULTIPLIER_BASE, type MultiplierHundredths } from "@crash/contracts";
+import { MULTIPLIER_BASE, type MultiplierHundredths } from "./money";
 
 /**
  * Multiplier curve: m(t) = floor(100 * e^(GROWTH_RATE_PER_MS * t)).

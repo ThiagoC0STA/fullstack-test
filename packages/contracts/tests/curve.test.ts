@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   elapsedMsToReachMultiplier,
   multiplierAtElapsedMs,
-} from "../../src/domain/multiplier-curve";
+} from "../src/curve";
 
 describe("multiplierAtElapsedMs", () => {
   test("starts at exactly 1.00x", () => {

@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
-import type {
-  CentsString,
-  MultiplierHundredths,
-  RoundPhase,
+import {
+  elapsedMsToReachMultiplier,
+  multiplierAtElapsedMs,
+  type CentsString,
+  type MultiplierHundredths,
+  type RoundPhase,
 } from "@crash/contracts";
 import { Bet } from "./bet";
 import {
@@ -15,10 +17,6 @@ import {
 } from "./errors";
 import { calculateCrashPointHundredths } from "./provably-fair/crash-point";
 import { sha256Hex } from "./provably-fair/hashing";
-import {
-  elapsedMsToReachMultiplier,
-  multiplierAtElapsedMs,
-} from "./multiplier-curve";
 
 interface RoundProps {
   id: string;
