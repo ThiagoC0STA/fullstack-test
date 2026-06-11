@@ -105,6 +105,10 @@ services:
       PORT: 4001
       DATABASE_URL: postgresql://admin:admin@postgres:5432/games
       RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672
+      KEYCLOAK_JWKS_URL: http://keycloak:8080/realms/crash-game/protocol/openid-connect/certs
+      KEYCLOAK_ISSUER: http://localhost:8080/realms/crash-game
+      BETTING_WINDOW_MS: "10000"
+      COOLDOWN_MS: "4000"
     depends_on:
       postgres:
         condition: service_healthy
