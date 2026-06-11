@@ -11,9 +11,16 @@
   },
   "dependencies": {
     "@crash/contracts": "workspace:*",
+    "@golevelup/nestjs-rabbitmq": "^9.0.2",
+    "@mikro-orm/core": "^7.1.4",
+    "@mikro-orm/migrations": "^7.1.4",
+    "@mikro-orm/nestjs": "^7.0.2",
+    "@mikro-orm/postgresql": "^7.1.4",
     "@nestjs/common": "^11.1.17",
     "@nestjs/core": "^11.1.17",
     "@nestjs/platform-express": "^11.1.17",
+    "@nestjs/swagger": "^11.4.4",
+    "jose": "^6.2.3",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   },
