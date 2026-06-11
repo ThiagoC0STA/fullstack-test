@@ -3,15 +3,18 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
+  addCents,
   WS_EVENTS,
   type BetCashedOutEvent,
   type BetPlacedEvent,
   type BetSettledEvent,
+  type CentsString,
   type MultiplierTickEvent,
   type RoundBettingStartedEvent,
   type RoundCrashedEvent,
   type RoundSnapshot,
   type RoundStartedEvent,
+  type WalletView,
 } from "@crash/contracts";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
@@ -56,8 +59,39 @@ export function useGameSocket(): void {
     const store = () => useGameStore.getState();
     const isMine = (playerId: string) =>
       playerId === useAuthStore.getState().playerId;
-    const invalidateWallet = () =>
+
+    // Wallet credits (cashout payout, late-debit refund) are processed
+    // asynchronously AFTER the game emits the bet event, so a single
+    // refetch fired now would read the pre-credit balance. We reconcile
+    // again once the outbox + consumer have had time to settle. A debit
+    // settlement, by contrast, is already applied when its event fires,
+    // so the immediate refetch there is correct.
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const refetchPlayerData = () => {
       void queryClient.invalidateQueries({ queryKey: ["wallet"] });
+      void queryClient.invalidateQueries({ queryKey: ["myBets"] });
+    };
+    const reconcileWallet = (immediate: boolean) => {
+      if (immediate) {
+        refetchPlayerData();
+      }
+      timers.push(
+        setTimeout(refetchPlayerData, 1500),
+        setTimeout(refetchPlayerData, 3500),
+      );
+    };
+    // reflect a payout the instant it is accepted, then reconcile
+    const applyCashoutCredit = (payoutCents: CentsString | null) => {
+      if (payoutCents) {
+        queryClient.setQueryData<WalletView>(["wallet"], (old) =>
+          old ? { ...old, balanceCents: addCents(old.balanceCents, payoutCents) } : old,
+        );
+      }
+      // the bet is already cashed_out in the game DB, so the history can
+      // refresh now; only the wallet credit is the asynchronous part
+      void queryClient.invalidateQueries({ queryKey: ["myBets"] });
+      reconcileWallet(false);
+    };
 
     // the first connect is silent; only a real drop-and-recover toasts
     let hasDisconnected = false;
@@ -86,26 +120,30 @@ export function useGameSocket(): void {
       store().applyCrashed(event);
       sounds.crash();
       if (hadMyActiveBet) {
-        invalidateWallet();
+        // a late-debit refund may still credit back; reconcile a beat later
+        reconcileWallet(true);
       }
     };
     const onBetPlaced = (event: BetPlacedEvent) => {
       store().applyBetEvent(event);
       if (isMine(event.bet.playerId)) {
         sounds.betPlaced();
+        // the bet is persisted in the same tx, so it shows up at once
+        void queryClient.invalidateQueries({ queryKey: ["myBets"] });
       }
     };
     const onBetSettled = (event: BetSettledEvent) => {
       store().applyBetEvent(event);
       if (isMine(event.bet.playerId)) {
-        invalidateWallet();
+        // debit already applied when this fires; refund (if rejected) is async
+        reconcileWallet(true);
       }
     };
     const onBetCashedOut = (event: BetCashedOutEvent) => {
       store().applyBetEvent(event);
       if (isMine(event.bet.playerId)) {
         sounds.cashOut();
-        invalidateWallet();
+        applyCashoutCredit(event.bet.payoutCents);
       }
     };
 
@@ -125,6 +163,9 @@ export function useGameSocket(): void {
     }
 
     return () => {
+      for (const timer of timers) {
+        clearTimeout(timer);
+      }
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
       socket.off(WS_EVENTS.ROUND_SNAPSHOT, onSnapshot);
