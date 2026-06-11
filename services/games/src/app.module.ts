@@ -15,7 +15,12 @@ import { RoundQueries } from "./application/round-queries";
 import { CashOutUseCase } from "./application/use-cases/cash-out.use-case";
 import { HandleDebitSettledUseCase } from "./application/use-cases/handle-debit-settled.use-case";
 import { PlaceBetUseCase } from "./application/use-cases/place-bet.use-case";
-import { SystemClock } from "./infrastructure/clock";
+import {
+  AUTH_CONFIG,
+  KeycloakJwtGuard,
+  OutboxPublisherService,
+  SystemClock,
+} from "@crash/platform";
 import { loadGamesServiceConfig } from "./infrastructure/config";
 import {
   CLOCK,
@@ -25,9 +30,7 @@ import {
   SEED_CHAIN,
   TRANSACTIONAL_RUNNER,
 } from "./infrastructure/di-tokens";
-import { KeycloakJwtGuard } from "./infrastructure/auth/keycloak-jwt.guard";
 import { RoundEngineHost } from "./infrastructure/engine/round-engine.host";
-import { OutboxPublisherService } from "./infrastructure/messaging/outbox-publisher.service";
 import { buildOrmConfig } from "./infrastructure/persistence/mikro-orm.config";
 import { MikroOrmSeedChain } from "./infrastructure/persistence/seed-chain.adapter";
 import { MikroOrmTransactionalRunner } from "./infrastructure/persistence/transactional-runner";
@@ -50,6 +53,10 @@ const config = loadGamesServiceConfig();
   controllers: [GamesController],
   providers: [
     { provide: GAMES_CONFIG, useValue: config },
+    {
+      provide: AUTH_CONFIG,
+      useValue: { jwksUrl: config.keycloakJwksUrl, issuer: config.keycloakIssuer },
+    },
     { provide: CLOCK, useClass: SystemClock },
     { provide: TRANSACTIONAL_RUNNER, useClass: MikroOrmTransactionalRunner },
     { provide: SEED_CHAIN, useClass: MikroOrmSeedChain },

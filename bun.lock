@@ -16,6 +16,7 @@
         "@tanstack/react-query": "^5.101.0",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
+        "geist": "^1.7.2",
         "lucide-react": "^1.17.0",
         "next": "^16.2.9",
         "oidc-client-ts": "^3.5.0",
@@ -44,11 +45,29 @@
         "typescript": "^5.8.3",
       },
     },
+    "packages/platform": {
+      "name": "@crash/platform",
+      "version": "0.0.1",
+      "dependencies": {
+        "@crash/contracts": "workspace:*",
+        "@golevelup/nestjs-rabbitmq": "^9.0.2",
+        "@mikro-orm/core": "^7.1.4",
+        "@mikro-orm/postgresql": "^7.1.4",
+        "@nestjs/common": "^11.1.17",
+        "jose": "^6.2.3",
+        "reflect-metadata": "^0.2.2",
+      },
+      "devDependencies": {
+        "bun-types": "latest",
+        "typescript": "^5.8.3",
+      },
+    },
     "services/games": {
       "name": "@crash/games",
       "version": "0.0.1",
       "dependencies": {
         "@crash/contracts": "workspace:*",
+        "@crash/platform": "workspace:*",
         "@golevelup/nestjs-rabbitmq": "^9.0.2",
         "@mikro-orm/core": "^7.1.4",
         "@mikro-orm/migrations": "^7.1.4",
@@ -75,6 +94,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@crash/contracts": "workspace:*",
+        "@crash/platform": "workspace:*",
         "@golevelup/nestjs-rabbitmq": "^9.0.2",
         "@mikro-orm/core": "^7.1.4",
         "@mikro-orm/migrations": "^7.1.4",
@@ -104,6 +124,8 @@
     "@crash/frontend": ["@crash/frontend@workspace:frontend"],
 
     "@crash/games": ["@crash/games@workspace:services/games"],
+
+    "@crash/platform": ["@crash/platform@workspace:packages/platform"],
 
     "@crash/wallets": ["@crash/wallets@workspace:services/wallets"],
 
@@ -368,6 +390,8 @@
     "fresh": ["fresh@2.0.0", "", {}, "sha512-Rx/WycZ60HOaqLKAi6cHRKKI7zxWbJ31MhntmtwMoaTeF7XFH9hhBp8vITaMidfljRQ6eYWCKkaTK+ykVJHP2A=="],
 
     "function-bind": ["function-bind@1.1.2", "", {}, "sha512-7XHNxH7qX9xG5mIwxkhumTox/MIRNcOgDrxWsMt2pAr23WHp6MrRlN7FBSFpCpr+oVO0F744iUgR82nJMfG2SA=="],
+
+    "geist": ["geist@1.7.2", "", { "peerDependencies": { "next": ">=13.2.0" } }, "sha512-Gu5lDFa3pLRyoBlBPf0QIFHVdWAnpco7fS1bJm41jyLPFoguBgiubseUN2oLXMgqZ7uxAxDoXcHMhCY/fOTTgg=="],
 
     "get-intrinsic": ["get-intrinsic@1.3.0", "", { "dependencies": { "call-bind-apply-helpers": "^1.0.2", "es-define-property": "^1.0.1", "es-errors": "^1.3.0", "es-object-atoms": "^1.1.1", "function-bind": "^1.1.2", "get-proto": "^1.0.1", "gopd": "^1.2.0", "has-symbols": "^1.1.0", "hasown": "^2.0.2", "math-intrinsics": "^1.1.0" } }, "sha512-9fSjSaos/fRIVIp+xSJlE6lfwhES7LNtKaCBIamHsjr2na1BiABJPo0mOjjz8GJDURarmCPGqaiVg5mfjb98CQ=="],
 

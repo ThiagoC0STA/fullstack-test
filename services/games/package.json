@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@crash/contracts": "workspace:*",
+    "@crash/platform": "workspace:*",
     "@golevelup/nestjs-rabbitmq": "^9.0.2",
     "@mikro-orm/core": "^7.1.4",
     "@mikro-orm/migrations": "^7.1.4",

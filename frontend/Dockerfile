@@ -5,6 +5,7 @@ WORKDIR /app
 # Workspace manifests first so the install layer is cached
 COPY package.json bun.lock ./
 COPY packages/contracts/package.json packages/contracts/
+COPY packages/platform/package.json packages/platform/
 COPY services/games/package.json services/games/
 COPY services/wallets/package.json services/wallets/
 COPY frontend/package.json frontend/

@@ -21,11 +21,11 @@ import type {
 import { RoundQueries } from "../../application/round-queries";
 import { CashOutUseCase } from "../../application/use-cases/cash-out.use-case";
 import { PlaceBetUseCase } from "../../application/use-cases/place-bet.use-case";
-import { CurrentPlayer } from "../../infrastructure/auth/current-player.decorator";
 import {
   type AuthenticatedPlayer,
+  CurrentPlayer,
   KeycloakJwtGuard,
-} from "../../infrastructure/auth/keycloak-jwt.guard";
+} from "@crash/platform";
 import { HealthCheckResponseDto } from "../dtos/health-check-response.dto";
 
 const DEFAULT_PAGE_LIMIT = 20;

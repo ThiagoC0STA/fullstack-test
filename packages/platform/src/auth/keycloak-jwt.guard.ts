@@ -6,8 +6,14 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
-import type { GamesServiceConfig } from "../config";
-import { GAMES_CONFIG } from "../di-tokens";
+
+/** Injection token for the auth settings each service provides. */
+export const AUTH_CONFIG = Symbol("AUTH_CONFIG");
+
+export interface AuthConfig {
+  jwksUrl: string;
+  issuer: string;
+}
 
 export interface AuthenticatedPlayer {
   id: string;
@@ -21,7 +27,7 @@ export interface AuthenticatedRequest {
 
 /**
  * Validates Keycloak-issued JWTs against the realm JWKS. The JWKS is
- * fetched lazily and cached by jose, so the service boots fine even if
+ * fetched lazily and cached by jose, so services boot fine even while
  * Keycloak is still starting.
  */
 @Injectable()
@@ -29,9 +35,9 @@ export class KeycloakJwtGuard implements CanActivate {
   private readonly jwks: ReturnType<typeof createRemoteJWKSet>;
   private readonly issuer: string;
 
-  constructor(@Inject(GAMES_CONFIG) config: GamesServiceConfig) {
-    this.jwks = createRemoteJWKSet(new URL(config.keycloakJwksUrl));
-    this.issuer = config.keycloakIssuer;
+  constructor(@Inject(AUTH_CONFIG) config: AuthConfig) {
+    this.jwks = createRemoteJWKSet(new URL(config.jwksUrl));
+    this.issuer = config.issuer;
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {

@@ -1,4 +1,5 @@
 import { isCents } from "@crash/contracts";
+import { requireEnv } from "@crash/platform";
 
 export interface WalletServiceConfig {
   port: number;
@@ -11,14 +12,6 @@ export interface WalletServiceConfig {
 
 const DEFAULT_PORT = 4002;
 const DEFAULT_INITIAL_BALANCE_CENTS = "100000";
-
-function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${name}`);
-  }
-  return value;
-}
 
 /** Fails fast at boot when the environment is incomplete or malformed. */
 export function loadWalletServiceConfig(): WalletServiceConfig {

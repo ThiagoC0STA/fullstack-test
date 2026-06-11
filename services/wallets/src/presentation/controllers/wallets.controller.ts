@@ -4,11 +4,11 @@ import type { ApiResponse, WalletView } from "@crash/contracts";
 import { GetWalletUseCase } from "../../application/use-cases/get-wallet.use-case";
 import { OpenWalletUseCase } from "../../application/use-cases/open-wallet.use-case";
 import type { Wallet } from "../../domain/wallet";
-import { CurrentPlayer } from "../../infrastructure/auth/current-player.decorator";
 import {
   type AuthenticatedPlayer,
+  CurrentPlayer,
   KeycloakJwtGuard,
-} from "../../infrastructure/auth/keycloak-jwt.guard";
+} from "@crash/platform";
 import { HealthCheckResponseDto } from "../dtos/health-check-response.dto";
 
 function toWalletView(wallet: Wallet): WalletView {

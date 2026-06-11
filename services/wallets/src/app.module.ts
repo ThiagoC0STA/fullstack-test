@@ -8,11 +8,14 @@ import { GetWalletUseCase } from "./application/use-cases/get-wallet.use-case";
 import { OpenWalletUseCase } from "./application/use-cases/open-wallet.use-case";
 import { ProcessCreditUseCase } from "./application/use-cases/process-credit.use-case";
 import { ProcessDebitUseCase } from "./application/use-cases/process-debit.use-case";
-import { SystemClock } from "./infrastructure/clock";
+import {
+  AUTH_CONFIG,
+  KeycloakJwtGuard,
+  OutboxPublisherService,
+  SystemClock,
+} from "@crash/platform";
 import { loadWalletServiceConfig } from "./infrastructure/config";
 import { CLOCK, TRANSACTIONAL_RUNNER, WALLET_CONFIG } from "./infrastructure/di-tokens";
-import { KeycloakJwtGuard } from "./infrastructure/auth/keycloak-jwt.guard";
-import { OutboxPublisherService } from "./infrastructure/messaging/outbox-publisher.service";
 import { buildOrmConfig } from "./infrastructure/persistence/mikro-orm.config";
 import { MikroOrmTransactionalRunner } from "./infrastructure/persistence/transactional-runner";
 import { WalletsController } from "./presentation/controllers/wallets.controller";
@@ -33,6 +36,10 @@ const config = loadWalletServiceConfig();
   controllers: [WalletsController],
   providers: [
     { provide: WALLET_CONFIG, useValue: config },
+    {
+      provide: AUTH_CONFIG,
+      useValue: { jwksUrl: config.keycloakJwksUrl, issuer: config.keycloakIssuer },
+    },
     { provide: CLOCK, useClass: SystemClock },
     { provide: TRANSACTIONAL_RUNNER, useClass: MikroOrmTransactionalRunner },
     {

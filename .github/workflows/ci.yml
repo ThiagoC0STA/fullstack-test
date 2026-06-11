@@ -21,6 +21,9 @@ jobs:
       - name: Typecheck contracts
         run: cd packages/contracts && bun run typecheck
 
+      - name: Typecheck platform
+        run: cd packages/platform && bun run typecheck
+
       - name: Typecheck games service
         run: cd services/games && bun run typecheck
 
