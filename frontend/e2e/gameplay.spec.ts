@@ -62,10 +62,17 @@ async function betAndTryCashout(page: Page): Promise<RoundOutcome> {
 }
 
 test("player logs in, bets and cashes out for a payout", async ({ page }) => {
+  // the crash instant is random, so winning can take several rounds;
+  // give the whole journey a generous budget instead of leaning on the
+  // retry (a 120s default could close the page mid-wait → flake)
+  test.setTimeout(300_000);
   await login(page);
 
+  // stop starting new attempts with under 40s left so a wait never gets
+  // cut off by the test timeout; the loop ends on the first cashout
+  const stopStartingAt = Date.now() + 260_000;
   let outcome: RoundOutcome = "skipped";
-  for (let attempt = 0; attempt < 6 && outcome !== "cashed"; attempt++) {
+  while (outcome !== "cashed" && Date.now() < stopStartingAt) {
     outcome = await betAndTryCashout(page);
     if (outcome === "lost") {
       // wait out the crashed round before the next attempt
