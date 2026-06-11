@@ -105,6 +105,30 @@ export class Bet {
     this.status = "lost";
   }
 
+  /**
+   * Compensation for a persistence failure: the cashout was applied in
+   * memory but the database rejected the write, so the transition must
+   * be undone or the player would silently lose the payout.
+   */
+  revertCashOut(): void {
+    this.assertTransition("cashed_out", "active");
+    this.cashoutMultiplierHundredths = null;
+    this.payoutCents = null;
+    this.status = "active";
+  }
+
+  /**
+   * Compensation for a persistence failure during debit settlement:
+   * back to pending_debit so the redelivered message (the inbox row
+   * rolled back with the same transaction) can settle the bet again.
+   */
+  revertSettlement(): void {
+    if (this.status !== "active" && this.status !== "rejected") {
+      throw new InvalidBetTransitionError(this.status, "pending_debit");
+    }
+    this.status = "pending_debit";
+  }
+
   private assertTransition(expectedFrom: BetStatus, to: BetStatus): void {
     if (this.status !== expectedFrom) {
       throw new InvalidBetTransitionError(this.status, to);

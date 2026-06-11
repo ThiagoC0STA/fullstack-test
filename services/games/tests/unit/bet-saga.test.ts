@@ -36,6 +36,7 @@ interface SagaHarness {
   outbox: FakeOutbox;
   inbox: FakeInbox;
   failNext: { value: boolean };
+  failCommitNext: { value: boolean };
   placeBet: PlaceBetUseCase;
   cashOut: CashOutUseCase;
   handleSettled: HandleDebitSettledUseCase;
@@ -49,7 +50,12 @@ function buildHarness(): SagaHarness {
   const outbox = new FakeOutbox();
   const inbox = new FakeInbox();
   const failNext = { value: false };
-  const runner = new FakeRunner(new FakeContext(repository, outbox, inbox), failNext);
+  const failCommitNext = { value: false };
+  const runner = new FakeRunner(
+    new FakeContext(repository, outbox, inbox),
+    failNext,
+    failCommitNext,
+  );
   return {
     store,
     clock,
@@ -58,6 +64,7 @@ function buildHarness(): SagaHarness {
     outbox,
     inbox,
     failNext,
+    failCommitNext,
     placeBet: new PlaceBetUseCase(store, runner, broadcast, clock),
     cashOut: new CashOutUseCase(store, runner, broadcast, clock),
     handleSettled: new HandleDebitSettledUseCase(store, runner, broadcast, clock),
@@ -193,6 +200,33 @@ describe("CashOutUseCase", () => {
       NoActiveBetError,
     );
   });
+
+  test("reverts the cashout in memory when the transaction fails", async () => {
+    const round = openBettingRound(harness);
+    await harness.placeBet.execute({
+      playerId: "player-1",
+      username: "player",
+      amountCents: "1000",
+    });
+    round.bets[0]?.confirmDebit();
+    round.start(NOW);
+    harness.clock.advance(5000);
+
+    harness.failNext.value = true;
+    await expect(harness.cashOut.execute({ playerId: "player-1" })).rejects.toThrow(
+      "simulated transaction failure",
+    );
+
+    const bet = round.bets[0];
+    expect(bet?.status).toBe("active");
+    expect(bet?.payoutCents).toBeNull();
+    expect(bet?.cashoutMultiplierHundredths).toBeNull();
+
+    // the bet stayed active, so the player can simply cash out again
+    harness.clock.advance(500);
+    const view = await harness.cashOut.execute({ playerId: "player-1" });
+    expect(view.status).toBe("cashed_out");
+  });
 });
 
 describe("HandleDebitSettledUseCase", () => {
@@ -287,5 +321,29 @@ describe("HandleDebitSettledUseCase", () => {
       settledMessage({ betId: "ghost-bet", roundId: "ghost-round" }),
     );
     expect(harness.broadcast.names()).not.toContain(WS_EVENTS.BET_SETTLED);
+  });
+
+  test("reverts the settlement in memory when the commit fails so redelivery can retry", async () => {
+    const round = openBettingRound(harness);
+    await harness.placeBet.execute({
+      playerId: "player-1",
+      username: "player",
+      amountCents: "1000",
+    });
+    const bet = round.bets[0];
+    const message = settledMessage({ betId: bet?.id as string, roundId: round.id });
+
+    harness.failCommitNext.value = true;
+    await expect(harness.handleSettled.execute(message)).rejects.toThrow(
+      "simulated commit failure",
+    );
+
+    expect(bet?.status).toBe("pending_debit");
+    expect(harness.broadcast.names()).not.toContain(WS_EVENTS.BET_SETTLED);
+
+    // the real inbox row rolls back with the failed transaction
+    harness.inbox.seen.clear();
+    await harness.handleSettled.execute(message);
+    expect(bet?.status).toBe("active");
   });
 });

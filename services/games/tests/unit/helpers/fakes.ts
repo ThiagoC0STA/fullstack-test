@@ -141,13 +141,19 @@ export class FakeRunner implements TransactionalRunnerPort {
   constructor(
     private readonly context: FakeContext,
     private readonly failNext: { value: boolean } = { value: false },
+    private readonly failCommitNext: { value: boolean } = { value: false },
   ) {}
 
-  run<T>(work: (tx: TransactionContext) => Promise<T>): Promise<T> {
+  async run<T>(work: (tx: TransactionContext) => Promise<T>): Promise<T> {
     if (this.failNext.value) {
       this.failNext.value = false;
-      return Promise.reject(new Error("simulated transaction failure"));
+      throw new Error("simulated transaction failure");
     }
-    return work(this.context);
+    const result = await work(this.context);
+    if (this.failCommitNext.value) {
+      this.failCommitNext.value = false;
+      throw new Error("simulated commit failure");
+    }
+    return result;
   }
 }

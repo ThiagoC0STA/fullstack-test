@@ -1,4 +1,4 @@
-import {
+﻿import {
   createMessage,
   ROUTING_KEYS,
   WS_EVENTS,
@@ -35,47 +35,62 @@ export class HandleDebitSettledUseCase {
   ) {}
 
   async execute(message: WalletDebitSettledMessage): Promise<void> {
-    const settled = await this.runner.run(async (tx) => {
-      const now = this.clock.now();
-      const isNew = await tx.inbox.recordIfNew(message.messageId, message.type, now);
-      if (!isNew) {
-        return null;
-      }
+    // wrapper object: TS control-flow analysis cannot see assignments
+    // made inside the transaction closure on a plain `let` binding
+    const touched: { bet: Bet | null } = { bet: null };
+    let settled: { bet: Bet; roundId: string } | null;
+    try {
+      settled = await this.runner.run(async (tx) => {
+        const now = this.clock.now();
+        const isNew = await tx.inbox.recordIfNew(message.messageId, message.type, now);
+        if (!isNew) {
+          return null;
+        }
 
-      const { betId, roundId, status } = message.payload;
-      const currentRound = this.store.current;
-      const inCurrentRound = currentRound?.id === roundId;
-      const bet = inCurrentRound
-        ? currentRound.bets.find((candidate) => candidate.id === betId)
-        : (await tx.rounds.findById(roundId))?.bets.find(
-            (candidate) => candidate.id === betId,
-          );
+        const { betId, roundId, status } = message.payload;
+        const currentRound = this.store.current;
+        const inCurrentRound = currentRound?.id === roundId;
+        const bet = inCurrentRound
+          ? currentRound.bets.find((candidate) => candidate.id === betId)
+          : (await tx.rounds.findById(roundId))?.bets.find(
+              (candidate) => candidate.id === betId,
+            );
 
-      if (!bet || bet.status !== "pending_debit") {
-        return null;
-      }
+        if (!bet || bet.status !== "pending_debit") {
+          return null;
+        }
 
-      if (status === "failed") {
+        if (status === "failed") {
+          touched.bet = bet;
+          bet.reject();
+          await tx.rounds.persistBet(bet);
+          return { bet, roundId };
+        }
+
+        const roundStillOpen =
+          inCurrentRound &&
+          (currentRound.phase === "betting" || currentRound.phase === "running");
+
+        if (roundStillOpen) {
+          touched.bet = bet;
+          bet.confirmDebit();
+          await tx.rounds.persistBet(bet);
+          return { bet, roundId };
+        }
+
+        await this.refund(tx, bet, roundId, now);
+        touched.bet = bet;
         bet.reject();
         await tx.rounds.persistBet(bet);
         return { bet, roundId };
-      }
-
-      const roundStillOpen =
-        inCurrentRound &&
-        (currentRound.phase === "betting" || currentRound.phase === "running");
-
-      if (roundStillOpen) {
-        bet.confirmDebit();
-        await tx.rounds.persistBet(bet);
-        return { bet, roundId };
-      }
-
-      await this.refund(tx, bet, roundId, now);
-      bet.reject();
-      await tx.rounds.persistBet(bet);
-      return { bet, roundId };
-    });
+      });
+    } catch (error: unknown) {
+      // keep memory consistent with the database that rejected the
+      // write; the inbox row rolled back in the same transaction, so
+      // the broker's redelivery will settle the bet again
+      touched.bet?.revertSettlement();
+      throw error;
+    }
 
     if (settled) {
       const event: BetSettledEvent = {

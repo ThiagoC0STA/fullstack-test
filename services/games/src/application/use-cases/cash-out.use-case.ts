@@ -32,20 +32,27 @@ export class CashOutUseCase {
     const now = this.clock.now();
     const bet = round.cashOut(input.playerId, now);
 
-    await this.runner.run(async (tx) => {
-      await tx.rounds.persistBet(bet);
-      const payload: WalletCreditRequestedPayload = {
-        playerId: bet.playerId,
-        roundId: round.id,
-        betId: bet.id,
-        amountCents: bet.payoutCents as string,
-        reason: "cashout_payout",
-      };
-      await tx.outbox.add(
-        createMessage(ROUTING_KEYS.WALLET_CREDIT_REQUESTED, payload, now),
-        ROUTING_KEYS.WALLET_CREDIT_REQUESTED,
-      );
-    });
+    try {
+      await this.runner.run(async (tx) => {
+        await tx.rounds.persistBet(bet);
+        const payload: WalletCreditRequestedPayload = {
+          playerId: bet.playerId,
+          roundId: round.id,
+          betId: bet.id,
+          amountCents: bet.payoutCents as string,
+          reason: "cashout_payout",
+        };
+        await tx.outbox.add(
+          createMessage(ROUTING_KEYS.WALLET_CREDIT_REQUESTED, payload, now),
+          ROUTING_KEYS.WALLET_CREDIT_REQUESTED,
+        );
+      });
+    } catch (error: unknown) {
+      // keep memory consistent with the database that rejected the
+      // write; the bet stays active so the player can cash out again
+      bet.revertCashOut();
+      throw error;
+    }
 
     const event: BetCashedOutEvent = { roundId: round.id, bet: toBetView(bet) };
     this.broadcast.emit(WS_EVENTS.BET_CASHED_OUT, event);
