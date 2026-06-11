@@ -44,6 +44,7 @@ export function RoundHistory() {
             className={cn(
               "shrink-0 cursor-pointer rounded border border-edge px-2 py-1 font-mono text-[11px] font-medium",
               "transition-colors duration-150 ease-out hover:border-edge-strong",
+              "max-sm:grid max-sm:min-h-11 max-sm:place-items-center max-sm:px-3",
               chipColor(round.crashPointHundredths),
             )}
           >

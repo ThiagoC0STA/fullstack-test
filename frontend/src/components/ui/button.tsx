@@ -11,11 +11,12 @@ const buttonVariants = cva(
         outline: "border border-edge bg-transparent text-ink hover:border-edge-strong",
         ghost: "bg-transparent text-ink-2 hover:bg-surface-2 hover:text-ink",
       },
+      // desktop stays dense; mobile honors the 44px touch-target minimum
       size: {
-        default: "h-9 px-4 text-[13px]",
-        sm: "h-7 px-2.5 text-xs",
-        lg: "h-10 px-5 text-sm",
-        icon: "size-8",
+        default: "h-9 px-4 text-[13px] max-sm:h-11",
+        sm: "h-7 px-2.5 text-xs max-sm:h-11",
+        lg: "h-10 px-5 text-sm max-sm:h-12",
+        icon: "size-8 max-sm:size-11",
       },
     },
     defaultVariants: { variant: "primary", size: "default" },

@@ -137,9 +137,20 @@ frontend/                # Next.js 16: jogo, OIDC PKCE, verificação no browser
 docker/                  # kong.yml, realm do Keycloak, init do Postgres
 ```
 
+## Segurança
+
+- **JWT validado por JWKS** nos dois services (`jose`): assinatura conferida contra as chaves do realm + issuer; o `sub` do token vira o playerId. Nenhuma rota autenticada confia em header sem verificar a assinatura.
+- **Sem float em dinheiro** em nenhuma camada (centavos string → BigInt → BIGINT + CHECK `>= 0`).
+- **Provably fair**: o seed só é revelado APÓS o crash; antes, só o hash de compromisso.
+- **Queries parametrizadas** em todo lugar (MikroORM + placeholders no SQL cru). Sem concatenação de string em query.
+- **CORS restrito** ao frontend; **rate limiting** por IP no Kong (20/s, 600/min); **security headers** no Next (`nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`).
+
+**Trade-off consciente — tokens OIDC em `localStorage`:** o oidc-client-ts guarda os tokens no `localStorage`, o que os expõe a roubo via XSS. O padrão ouro para dinheiro real é o **BFF pattern**: um backend-for-frontend guarda o token e entrega ao browser apenas um cookie de sessão `httpOnly` + `SameSite`, inacessível a JavaScript. Não foi feito aqui porque é uma re-arquitetura do fluxo de auth (proxy de sessão, CSRF token, refresh server-side) que ultrapassa o escopo do desafio. A mitigação atual é a superfície de XSS reduzida (React escapa output por padrão, sem `dangerouslySetInnerHTML`, security headers). **Em produção, BFF seria obrigatório.**
+
 ## Limitações conhecidas / evolução
 
 - Engine single-instance (ver trade-offs). Caminho: leader election ou particionamento de rodadas.
 - Sem DLQ: mensagem malformada é descartada com log (`nack` sem requeue). Caminho: DLX + alarme.
 - Auto cashout dispara do cliente (latência de rede). Caminho: alvo registrado na aposta e executado pelo engine.
-- Rate limiting ainda não aplicado no Kong.
+- Sem CSP estrita com nonce por request (security headers básicos aplicados). Caminho: middleware Next com nonce.
+- Credenciais de infra hardcoded (`admin/admin`, `player123`) — valores de dev local do enunciado; produção usaria secrets manager.

@@ -13,6 +13,7 @@ import {
   type RoundSnapshot,
   type RoundStartedEvent,
 } from "@crash/contracts";
+import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
 import { sounds } from "@/lib/sounds";
@@ -58,8 +59,20 @@ export function useGameSocket(): void {
     const invalidateWallet = () =>
       void queryClient.invalidateQueries({ queryKey: ["wallet"] });
 
-    const onConnect = () => store().setConnected(true);
-    const onDisconnect = () => store().setConnected(false);
+    // the first connect is silent; only a real drop-and-recover toasts
+    let hasDisconnected = false;
+    const onConnect = () => {
+      store().setConnected(true);
+      if (hasDisconnected) {
+        toast.success("Reconectado ao tempo real");
+        hasDisconnected = false;
+      }
+    };
+    const onDisconnect = () => {
+      store().setConnected(false);
+      hasDisconnected = true;
+      toast.warning("Conexão perdida, reconectando…");
+    };
     const onSnapshot = (snapshot: RoundSnapshot) => store().applySnapshot(snapshot);
     const onBettingStarted = (event: RoundBettingStartedEvent) =>
       store().applyBettingStarted(event);
