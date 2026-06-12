@@ -5,6 +5,7 @@ import {
   type BetPlacedEvent,
   type BetView,
   type CentsString,
+  type MultiplierHundredths,
   type WalletDebitRequestedPayload,
 } from "@crash/contracts";
 import { BettingClosedError } from "../../domain/errors";
@@ -29,6 +30,7 @@ export class PlaceBetUseCase {
     playerId: string;
     username: string;
     amountCents: CentsString;
+    autoCashoutHundredths?: MultiplierHundredths | null;
   }): Promise<BetView> {
     const round = this.store.current;
     if (!round) {
@@ -39,6 +41,7 @@ export class PlaceBetUseCase {
       playerId: input.playerId,
       username: input.username,
       amountCents: input.amountCents,
+      autoCashoutHundredths: input.autoCashoutHundredths ?? null,
       now,
     });
 

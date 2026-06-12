@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Check, TrendingDown } from "lucide-react";
@@ -35,7 +35,6 @@ export function BetControls() {
   const [amount, setAmount] = useState("10.00");
   const [autoCashout, setAutoCashout] = useState("");
   const [countdown, setCountdown] = useState<number | null>(null);
-  const autoFiredRef = useRef(false);
 
   const myBet = playerId
     ? bets.find((bet) => bet.playerId === playerId && bet.status !== "rejected")
@@ -54,7 +53,8 @@ export function BetControls() {
   }, [phase, bettingEndsAtMs, clockSkewMs]);
 
   const placeBet = useMutation({
-    mutationFn: (amountCents: string) => api.placeBet(amountCents),
+    mutationFn: (vars: { amountCents: string; autoCashoutHundredths: number | null }) =>
+      api.placeBet(vars.amountCents, vars.autoCashoutHundredths),
     onSuccess: () => toast.success("Aposta enviada, debitando da carteira"),
     onError: (error) =>
       toast.error(error instanceof ApiError ? error.message : "Falha ao apostar"),
@@ -70,22 +70,19 @@ export function BetControls() {
       toast.error(error instanceof ApiError ? error.message : "Falha no cashout"),
   });
 
-  // auto cashout: fires once when the live multiplier crosses the target
-  useEffect(() => {
-    if (phase !== "running" || !myBet || myBet.status !== "active") {
-      autoFiredRef.current = false;
-      return;
+  // The auto cashout target is registered on the bet and executed by the
+  // engine server-side, so it no longer depends on this client's latency.
+  const parseAutoCashout = (): number | null | "invalid" => {
+    const raw = autoCashout.trim().replace(",", ".");
+    if (raw === "") {
+      return null;
     }
-    const target = Number.parseFloat(autoCashout);
-    if (!Number.isFinite(target) || target < 1.01) {
-      return;
+    const parsed = Number.parseFloat(raw);
+    if (!Number.isFinite(parsed) || parsed < 1.01) {
+      return "invalid";
     }
-    const targetHundredths = Math.round(target * 100);
-    if (multiplier >= targetHundredths && !autoFiredRef.current && !cashOut.isPending) {
-      autoFiredRef.current = true;
-      cashOut.mutate();
-    }
-  }, [phase, myBet, autoCashout, multiplier, cashOut]);
+    return Math.round(parsed * 100);
+  };
 
   const submitBet = () => {
     try {
@@ -98,7 +95,12 @@ export function BetControls() {
         toast.error("Aposta máxima: 1000.00");
         return;
       }
-      placeBet.mutate(cents);
+      const autoCashoutHundredths = parseAutoCashout();
+      if (autoCashoutHundredths === "invalid") {
+        toast.error("Auto-saque mínimo: 1.01×");
+        return;
+      }
+      placeBet.mutate({ amountCents: cents, autoCashoutHundredths });
     } catch (error: unknown) {
       toast.error(
         error instanceof InvalidMoneyError
@@ -156,6 +158,7 @@ export function BetControls() {
               inputMode="decimal"
               placeholder="2.00"
               value={autoCashout}
+              disabled={!canEditBet}
               onChange={(event) => setAutoCashout(event.target.value)}
             />
           </div>
@@ -221,6 +224,8 @@ export function BetControls() {
           <p className="flex items-center gap-1.5 text-[13px] text-accent">
             <Check className="size-3.5" aria-hidden />
             Aposta de {formatMoney(myBet.amountCents)} confirmada
+            {myBet.autoCashoutHundredths !== null &&
+              ` · auto-saque em ${formatMultiplier(myBet.autoCashoutHundredths)}`}
           </p>
         )}
         {myBet?.status === "cashed_out" && (

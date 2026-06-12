@@ -91,6 +91,7 @@ export class Round {
     playerId: string;
     username: string;
     amountCents: CentsString;
+    autoCashoutHundredths?: MultiplierHundredths | null;
     now: Date;
   }): Bet {
     if (this.phase !== "betting") {
@@ -107,6 +108,7 @@ export class Round {
       playerId: input.playerId,
       username: input.username,
       amountCents: input.amountCents,
+      autoCashoutHundredths: input.autoCashoutHundredths ?? null,
       now: input.now,
     });
     this.bets.push(bet);
@@ -144,6 +146,33 @@ export class Round {
       return false;
     }
     return now.getTime() - this.startedAt.getTime() >= this.crashElapsedMs;
+  }
+
+  /**
+   * Auto cashout executed by the engine itself (no client round-trip):
+   * every active bet whose target the live multiplier has reached is
+   * cashed out AT its target, which is exact since the curve is
+   * monotonic and the engine only runs this before the crash instant.
+   * Returns the bets that fired so the caller can settle them.
+   */
+  autoCashOutReady(now: Date): Bet[] {
+    if (this.phase !== "running" || !this.startedAt) {
+      return [];
+    }
+    if (this.hasReachedCrashPoint(now)) {
+      return [];
+    }
+    const current = this.multiplierAt(now);
+    const ready = this.bets.filter(
+      (bet) =>
+        bet.status === "active" &&
+        bet.autoCashoutHundredths !== null &&
+        bet.autoCashoutHundredths <= current,
+    );
+    for (const bet of ready) {
+      bet.cashOut(bet.autoCashoutHundredths as MultiplierHundredths);
+    }
+    return ready;
   }
 
   cashOut(playerId: string, now: Date): Bet {

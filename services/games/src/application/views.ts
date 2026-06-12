@@ -10,6 +10,7 @@ export function toBetView(bet: Bet): BetView {
     amountCents: bet.amountCents,
     status: bet.status,
     cashoutMultiplierHundredths: bet.cashoutMultiplierHundredths,
+    autoCashoutHundredths: bet.autoCashoutHundredths,
     payoutCents: bet.payoutCents,
   };
 }

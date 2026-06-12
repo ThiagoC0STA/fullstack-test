@@ -1,7 +1,13 @@
 import { Injectable, Logger } from "@nestjs/common";
-import { RabbitSubscribe } from "@golevelup/nestjs-rabbitmq";
 import {
+  Nack,
+  RabbitSubscribe,
+  forceDeleteAssertQueueErrorHandler,
+} from "@golevelup/nestjs-rabbitmq";
+import {
+  CRASH_DEAD_LETTER_EXCHANGE,
   CRASH_EVENTS_EXCHANGE,
+  DEAD_LETTER_QUEUES,
   QUEUES,
   ROUTING_KEYS,
   type WalletCreditRequestedMessage,
@@ -35,12 +41,23 @@ export class WalletOperationsConsumer {
       ROUTING_KEYS.WALLET_CREDIT_REQUESTED,
     ],
     queue: QUEUES.WALLET_OPERATIONS,
-    queueOptions: { durable: true },
+    queueOptions: {
+      durable: true,
+      deadLetterExchange: CRASH_DEAD_LETTER_EXCHANGE,
+      deadLetterRoutingKey: DEAD_LETTER_QUEUES.WALLET_OPERATIONS,
+    },
+    // Recreate the queue if it predates the dead-letter arguments, so adding
+    // the DLQ doesn't crash boot with PRECONDITION_FAILED on existing stacks.
+    assertQueueErrorHandler: forceDeleteAssertQueueErrorHandler,
   })
-  async handle(message: unknown): Promise<void> {
+  async handle(message: unknown): Promise<Nack | void> {
     if (!isWalletOperationMessage(message)) {
-      this.logger.warn(`Discarding malformed message: ${JSON.stringify(message)}`);
-      return;
+      // Poison message: requeue would loop forever, so reject without requeue
+      // and let the broker dead-letter it for inspection/replay.
+      this.logger.error(
+        `Dead-lettering malformed message: ${JSON.stringify(message)}`,
+      );
+      return new Nack(false);
     }
 
     if (message.type === ROUTING_KEYS.WALLET_DEBIT_REQUESTED) {

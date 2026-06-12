@@ -15,6 +15,7 @@ function bet(overrides: Partial<BetView> = {}): BetView {
     amountCents: "1000",
     status: "active",
     cashoutMultiplierHundredths: null,
+    autoCashoutHundredths: null,
     payoutCents: null,
     ...overrides,
   };

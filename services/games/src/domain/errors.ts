@@ -23,6 +23,14 @@ export class InvalidBetAmountError extends GameDomainError {
   }
 }
 
+export class InvalidAutoCashoutTargetError extends GameDomainError {
+  constructor(readonly target: number) {
+    super(
+      `Invalid auto cashout target "${target}": must be integer hundredths between 1.01x and 10000.00x`,
+    );
+  }
+}
+
 export class InvalidRoundTransitionError extends GameDomainError {
   constructor(from: string, to: string) {
     super(`Invalid round transition: ${from} -> ${to}`);

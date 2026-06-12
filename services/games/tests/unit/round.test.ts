@@ -4,6 +4,7 @@ import {
   BettingClosedError,
   CashOutTooLateError,
   DuplicateBetError,
+  InvalidAutoCashoutTargetError,
   InvalidBetAmountError,
   InvalidBetTransitionError,
   InvalidRoundTransitionError,
@@ -261,6 +262,77 @@ describe("Round.crash", () => {
   test("cannot crash a round that is not running", () => {
     const round = openRound();
     expect(() => round.crash(NOW)).toThrow(InvalidRoundTransitionError);
+  });
+});
+
+describe("Round.autoCashOutReady", () => {
+  function placeAutoBet(round: Round, target: number, playerId = "auto-player") {
+    const bet = round.placeBet({
+      playerId,
+      username: playerId,
+      amountCents: "1000",
+      autoCashoutHundredths: target,
+      now: NOW,
+    });
+    bet.confirmDebit();
+    return bet;
+  }
+
+  test("cashes out an active bet exactly at its target once reached", () => {
+    const round = openRound();
+    const bet = placeAutoBet(round, 200);
+    round.start(NOW);
+
+    // 12s in the curve is ~2.06x, comfortably past the 2.00x target
+    const fired = round.autoCashOutReady(afterStart(round, 12_000));
+
+    expect(fired).toHaveLength(1);
+    expect(bet.status).toBe("cashed_out");
+    // paid at the target, not the (higher) live multiplier
+    expect(bet.cashoutMultiplierHundredths).toBe(200);
+    expect(bet.payoutCents).toBe(calculatePayoutCents("1000", 200));
+  });
+
+  test("does not fire before the target is reached", () => {
+    const round = openRound();
+    const bet = placeAutoBet(round, 250);
+    round.start(NOW);
+
+    expect(round.autoCashOutReady(afterStart(round, 1_000))).toHaveLength(0);
+    expect(bet.status).toBe("active");
+  });
+
+  test("ignores bets that have no auto cashout target", () => {
+    const round = openRound();
+    const manual = placeActiveBet(round, "manual-player");
+    round.start(NOW);
+
+    expect(round.autoCashOutReady(afterStart(round, 12_000))).toHaveLength(0);
+    expect(manual.status).toBe("active");
+  });
+
+  test("never fires at or after the crash instant", () => {
+    const round = openRound();
+    const bet = placeAutoBet(round, 200);
+    round.start(NOW);
+
+    const fired = round.autoCashOutReady(afterStart(round, round.crashElapsedMs));
+
+    expect(fired).toHaveLength(0);
+    expect(bet.status).toBe("active");
+  });
+
+  test("rejects an invalid auto cashout target at placement", () => {
+    const round = openRound();
+    expect(() =>
+      round.placeBet({
+        playerId: "p",
+        username: "p",
+        amountCents: "1000",
+        autoCashoutHundredths: 100,
+        now: NOW,
+      }),
+    ).toThrow(InvalidAutoCashoutTargetError);
   });
 });
 

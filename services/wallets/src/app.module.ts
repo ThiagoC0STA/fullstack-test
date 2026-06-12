@@ -2,7 +2,11 @@ import { Module } from "@nestjs/common";
 import { APP_FILTER } from "@nestjs/core";
 import { MikroOrmModule } from "@mikro-orm/nestjs";
 import { RabbitMQModule } from "@golevelup/nestjs-rabbitmq";
-import { CRASH_EVENTS_EXCHANGE } from "@crash/contracts";
+import {
+  CRASH_DEAD_LETTER_EXCHANGE,
+  CRASH_EVENTS_EXCHANGE,
+  DEAD_LETTER_QUEUES,
+} from "@crash/contracts";
 import type { ClockPort, TransactionalRunnerPort } from "./application/ports";
 import { GetWalletUseCase } from "./application/use-cases/get-wallet.use-case";
 import { OpenWalletUseCase } from "./application/use-cases/open-wallet.use-case";
@@ -29,7 +33,18 @@ const config = loadWalletServiceConfig();
     MikroOrmModule.forRoot(buildOrmConfig(config.databaseUrl)),
     RabbitMQModule.forRoot({
       uri: config.rabbitMqUrl,
-      exchanges: [{ name: CRASH_EVENTS_EXCHANGE, type: "topic" }],
+      exchanges: [
+        { name: CRASH_EVENTS_EXCHANGE, type: "topic" },
+        { name: CRASH_DEAD_LETTER_EXCHANGE, type: "direct" },
+      ],
+      queues: [
+        {
+          name: DEAD_LETTER_QUEUES.WALLET_OPERATIONS,
+          exchange: CRASH_DEAD_LETTER_EXCHANGE,
+          routingKey: DEAD_LETTER_QUEUES.WALLET_OPERATIONS,
+          options: { durable: true },
+        },
+      ],
       connectionInitOptions: { wait: true, timeout: 30000 },
     }),
   ],

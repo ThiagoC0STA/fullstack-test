@@ -16,6 +16,24 @@ export const BET_LIMITS = {
   MAX_CENTS: "100000" as CentsString,
 } as const;
 
+/**
+ * Auto cashout target bounds in hundredths. The lower bound sits just
+ * above 1.00x (a target at or below the start would fire instantly) and
+ * the upper bound matches the crash point cap (10,000.00x).
+ */
+export const AUTO_CASHOUT_LIMITS = {
+  MIN_HUNDREDTHS: 101,
+  MAX_HUNDREDTHS: 1_000_000,
+} as const;
+
+export function isAutoCashoutTarget(value: number): value is MultiplierHundredths {
+  return (
+    Number.isSafeInteger(value) &&
+    value >= AUTO_CASHOUT_LIMITS.MIN_HUNDREDTHS &&
+    value <= AUTO_CASHOUT_LIMITS.MAX_HUNDREDTHS
+  );
+}
+
 const CENTS_PATTERN = /^(0|[1-9][0-9]*)$/;
 const DECIMAL_PATTERN = /^(0|[1-9][0-9]*)(\.[0-9]{1,2})?$/;
 

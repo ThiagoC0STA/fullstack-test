@@ -24,6 +24,8 @@ export interface BetView {
   status: BetStatus;
   cashoutMultiplierHundredths: MultiplierHundredths | null;
   payoutCents: CentsString | null;
+  /** Target multiplier (hundredths) the engine auto-cashes at; null = manual. */
+  autoCashoutHundredths: MultiplierHundredths | null;
 }
 
 export interface RoundSnapshot {

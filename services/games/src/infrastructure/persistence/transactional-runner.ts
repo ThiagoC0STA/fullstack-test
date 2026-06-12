@@ -58,6 +58,7 @@ class MikroOrmRoundRepository implements RoundRepositoryPort {
       amountCents: bet.amountCents,
       status: bet.status,
       cashoutMultiplierHundredths: bet.cashoutMultiplierHundredths,
+      autoCashoutHundredths: bet.autoCashoutHundredths,
       payoutCents: bet.payoutCents,
       placedAt: bet.placedAt,
     });

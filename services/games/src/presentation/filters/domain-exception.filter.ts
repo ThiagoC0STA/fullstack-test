@@ -4,7 +4,11 @@ import {
   type ExceptionFilter,
   HttpStatus,
 } from "@nestjs/common";
-import { GameDomainError, InvalidBetAmountError } from "../../domain/errors";
+import {
+  GameDomainError,
+  InvalidAutoCashoutTargetError,
+  InvalidBetAmountError,
+} from "../../domain/errors";
 
 interface JsonCapableResponse {
   status(code: number): { json(body: unknown): void };
@@ -20,7 +24,8 @@ export class GameDomainExceptionFilter implements ExceptionFilter {
   catch(exception: GameDomainError, host: ArgumentsHost): void {
     const response = host.switchToHttp().getResponse<JsonCapableResponse>();
     const status =
-      exception instanceof InvalidBetAmountError
+      exception instanceof InvalidBetAmountError ||
+      exception instanceof InvalidAutoCashoutTargetError
         ? HttpStatus.BAD_REQUEST
         : HttpStatus.CONFLICT;
     response.status(status).json({

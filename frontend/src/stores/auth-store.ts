@@ -1,61 +1,55 @@
 import { create } from "zustand";
-import type { User } from "oidc-client-ts";
-import { getUserManager } from "@/lib/auth";
 
 export type AuthStatus = "loading" | "anonymous" | "authenticated";
+
+interface SessionResponse {
+  authenticated: boolean;
+  playerId?: string;
+  username?: string;
+}
 
 interface AuthState {
   status: AuthStatus;
   playerId: string | null;
   username: string | null;
-  accessToken: string | null;
   initialize: () => Promise<void>;
-  login: () => Promise<void>;
-  logout: () => Promise<void>;
-  applyUser: (user: User | null) => void;
+  login: () => void;
+  logout: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set, get) => ({
+/**
+ * Auth is owned by the BFF (httpOnly cookies). The client only learns who
+ * it is from `/api/auth/session`; the access token never reaches JS, which
+ * removes the XSS token-theft surface entirely.
+ */
+export const useAuthStore = create<AuthState>((set) => ({
   status: "loading",
   playerId: null,
   username: null,
-  accessToken: null,
-
-  applyUser: (user) => {
-    if (!user || user.expired) {
-      set({ status: "anonymous", playerId: null, username: null, accessToken: null });
-      return;
-    }
-    const username =
-      typeof user.profile.preferred_username === "string"
-        ? user.profile.preferred_username
-        : user.profile.sub;
-    set({
-      status: "authenticated",
-      playerId: user.profile.sub,
-      username,
-      accessToken: user.access_token,
-    });
-  },
 
   initialize: async () => {
-    const manager = getUserManager();
-    manager.events.addUserLoaded((user) => get().applyUser(user));
-    manager.events.addUserUnloaded(() => get().applyUser(null));
-    manager.events.addSilentRenewError(() => get().applyUser(null));
     try {
-      const user = await manager.getUser();
-      get().applyUser(user);
+      const response = await fetch("/api/auth/session", { cache: "no-store" });
+      const session = (await response.json()) as SessionResponse;
+      if (session.authenticated && session.playerId) {
+        set({
+          status: "authenticated",
+          playerId: session.playerId,
+          username: session.username ?? session.playerId,
+        });
+        return;
+      }
     } catch {
-      get().applyUser(null);
+      // fall through to anonymous
     }
+    set({ status: "anonymous", playerId: null, username: null });
   },
 
-  login: async () => {
-    await getUserManager().signinRedirect();
+  login: () => {
+    window.location.href = "/api/auth/login";
   },
 
-  logout: async () => {
-    await getUserManager().signoutRedirect();
+  logout: () => {
+    window.location.href = "/api/auth/logout";
   },
 }));

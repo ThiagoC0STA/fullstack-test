@@ -70,6 +70,11 @@ export const BetSchema = new EntitySchema<Bet>({
       fieldName: "cashout_multiplier_hundredths",
       nullable: true,
     },
+    autoCashoutHundredths: {
+      type: "integer",
+      fieldName: "auto_cashout_hundredths",
+      nullable: true,
+    },
     payoutCents: {
       type: new BigIntType("string"),
       fieldName: "payout_cents",

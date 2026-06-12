@@ -30,11 +30,21 @@ const COLORS = {
 } as const;
 
 const PAD = { left: 56, right: 20, top: 32, bottom: 36 } as const;
-const TICK_CANDIDATES = [
-  110, 120, 130, 150, 175, 200, 250, 300, 400, 500, 700, 1000, 1500, 2000,
-  3000, 5000, 10000, 20000, 50000, 100000, 500000, 1000000,
-];
-const X_STEPS_SECONDS = [1, 2, 5, 10, 15, 30, 60, 120];
+// "Nice" 1·2·5 ladder in hundredths (0.10x, 0.20x, 0.50x, 1.00x, …) used for
+// the multiplier gridlines. Time gridlines use a seconds ladder.
+const NICE_MULT_STEPS: number[] = (() => {
+  const out: number[] = [];
+  for (let exp = 1; exp <= 7; exp++) {
+    const base = 10 ** exp;
+    out.push(base, 2 * base, 5 * base);
+  }
+  return out;
+})();
+const X_STEPS_SECONDS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600];
+// target pixel spacing between gridlines; the live step is chosen to land
+// near these and crossfades between ladder rungs so nothing ever pops.
+const TARGET_Y_PX = 56;
+const TARGET_X_PX = 104;
 
 interface Particle {
   x: number;
@@ -74,21 +84,37 @@ function mono(size: number, weight = 500): string {
   return `${weight} ${size}px ${monoFamily()}`;
 }
 
-/** Up to 4 "nice" multiplier gridlines inside (1.00x, max]. */
-function multiplierTicks(maxMultiplier: number): number[] {
-  const inRange = TICK_CANDIDATES.filter((c) => c > 100 && c <= maxMultiplier);
-  if (inRange.length <= 4) {
-    return inRange;
-  }
-  const picked = new Set<number>();
-  for (let i = 0; i < 4; i++) {
-    picked.add(inRange[Math.round((i * (inRange.length - 1)) / 3)] as number);
-  }
-  return [...picked];
+function clamp(value: number, min: number, max: number): number {
+  return value < min ? min : value > max ? max : value;
 }
 
-function secondsStep(windowSeconds: number): number {
-  return X_STEPS_SECONDS.find((step) => windowSeconds / step <= 5) ?? 300;
+/**
+ * Picks the two adjacent ladder rungs that bracket `ideal` plus a blend
+ * factor `t` (0 at the lower rung, 1 at the upper). Drawing the lower rung
+ * with alpha `1 - t` and the upper with `t` crossfades the grid density
+ * continuously as the axis grows, so gridlines never jump or pop.
+ */
+function bracketStep(
+  ideal: number,
+  ladder: number[],
+): { lower: number; upper: number; t: number } {
+  const first = ladder[0] as number;
+  if (ideal <= first) {
+    return { lower: first, upper: first, t: 0 };
+  }
+  let lower = first;
+  let upper = ladder[ladder.length - 1] as number;
+  for (let i = 0; i < ladder.length; i++) {
+    const rung = ladder[i] as number;
+    if (rung <= ideal) {
+      lower = rung;
+      upper = (ladder[i + 1] as number | undefined) ?? rung * 2;
+    } else {
+      break;
+    }
+  }
+  const t = upper > lower ? (ideal - lower) / (upper - lower) : 0;
+  return { lower, upper, t };
 }
 
 const GROWTH_RATE_PER_MS = 0.00006;
@@ -139,7 +165,12 @@ function smoothTakeoffMultiplierAt(
   const t3 = t2 * t;
   const start = 100;
   const end = smoothMultiplierAt(CURVE_TAKEOFF_MS);
-  const endSlope = GROWTH_RATE_PER_MS * end * CURVE_TAKEOFF_MS * 1.35;
+  // end tangent (in t-space) MUST equal the exponential's own slope at the
+  // seam, otherwise the line bends — a visible C1 kink at CURVE_TAKEOFF_MS.
+  // d/dt[100·e^(k·t)] = k·m, so the t-normalised tangent is k·end·T.
+  const endSlope = GROWTH_RATE_PER_MS * end * CURVE_TAKEOFF_MS;
+  // cubic Hermite with a flat start (tangent 0, eases off the baseline) and
+  // the exponential's slope at the end → curve and seam are C1-continuous.
   const value =
     (2 * t3 - 3 * t2 + 1) * start +
     (-2 * t3 + 3 * t2) * end +
@@ -428,25 +459,22 @@ function drawChrome(
     height - PAD.bottom - ((m - 100) / (maxMultiplier - 100)) * plotHeight;
   const baseY = yFor(100);
 
+  // both axes are smoothed continuously, so the only source of jank is the
+  // CHOICE of which gridlines to draw. Crossfading two ladder rungs by alpha
+  // (plus edge fades) keeps the grid gliding instead of stepping.
   ctx.textAlign = "right";
   ctx.font = mono(10);
-  for (const tick of multiplierTicks(maxMultiplier)) {
-    const y = yFor(tick);
-    // on a wide scale the lowest tick can sit on top of the 1.00x label
-    if (y > baseY - 14) {
-      continue;
-    }
-    ctx.strokeStyle = COLORS.grid;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(PAD.left, y);
-    ctx.lineTo(width - PAD.right, y);
-    ctx.stroke();
-    ctx.fillStyle = COLORS.label;
-    ctx.fillText(`${multiplierToDecimal(tick)}×`, PAD.left - 10, y + 3);
+  const span = Math.max(1, maxMultiplier - 100);
+  const idealMultStep = (span / plotHeight) * TARGET_Y_PX;
+  const mult = bracketStep(idealMultStep, NICE_MULT_STEPS);
+  drawMultiplierGrid(ctx, yFor, baseY, maxMultiplier, width, mult.lower, 1 - mult.t);
+  if (mult.upper !== mult.lower) {
+    drawMultiplierGrid(ctx, yFor, baseY, maxMultiplier, width, mult.upper, mult.t);
   }
+  ctx.globalAlpha = 1;
 
   ctx.strokeStyle = COLORS.axis;
+  ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.moveTo(PAD.left, baseY);
   ctx.lineTo(width - PAD.right, baseY);
@@ -456,21 +484,96 @@ function drawChrome(
 
   ctx.textAlign = "center";
   const windowSeconds = windowMs / 1000;
-  const step = secondsStep(windowSeconds);
-  for (let s = step; s <= windowSeconds; s += step) {
-    const x = xFor(s * 1000);
+  const idealTimeStep = (windowSeconds / plotWidth) * TARGET_X_PX;
+  const time = bracketStep(idealTimeStep, X_STEPS_SECONDS);
+  drawTimeGrid(ctx, xFor, height, windowSeconds, time.lower, 1 - time.t);
+  if (time.upper !== time.lower) {
+    drawTimeGrid(ctx, xFor, height, windowSeconds, time.upper, time.t);
+  }
+  ctx.globalAlpha = 1;
+
+  return { xFor, yFor, baseY, windowMs };
+}
+
+/**
+ * One density level of horizontal (multiplier) gridlines at `level`
+ * intensity. Lines fade as they compress into the baseline and fade in as
+ * they are born at the top of a growing axis, so the grid never pops.
+ */
+function drawMultiplierGrid(
+  ctx: CanvasRenderingContext2D,
+  yFor: (m: number) => number,
+  baseY: number,
+  maxMultiplier: number,
+  width: number,
+  step: number,
+  level: number,
+) {
+  if (level <= 0.02) {
+    return;
+  }
+  const firstValue = Math.ceil((100 + 1e-6) / step) * step;
+  for (let value = firstValue; value <= maxMultiplier + 1e-6; value += step) {
+    const y = yFor(value);
+    const intensity =
+      level *
+      clamp((baseY - y) / 28, 0, 1) *
+      clamp((maxMultiplier - value) / (step * 0.85), 0, 1);
+    if (intensity <= 0.02) {
+      continue;
+    }
+    ctx.globalAlpha = intensity;
     ctx.strokeStyle = COLORS.grid;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(PAD.left, y);
+    ctx.lineTo(width - PAD.right, y);
+    ctx.stroke();
+    ctx.fillStyle = COLORS.label;
+    ctx.fillText(`${multiplierToDecimal(value)}×`, PAD.left - 10, y + 3);
+  }
+}
+
+/** One density level of vertical (time) gridlines at `level` intensity. */
+function drawTimeGrid(
+  ctx: CanvasRenderingContext2D,
+  xFor: (t: number) => number,
+  height: number,
+  windowSeconds: number,
+  stepSeconds: number,
+  level: number,
+) {
+  if (level <= 0.02) {
+    return;
+  }
+  for (let s = stepSeconds; s <= windowSeconds + 1e-6; s += stepSeconds) {
+    const x = xFor(s * 1000);
+    const intensity =
+      level *
+      clamp((x - PAD.left) / 44, 0, 1) *
+      clamp((windowSeconds - s) / (stepSeconds * 0.85), 0, 1);
+    if (intensity <= 0.02) {
+      continue;
+    }
+    ctx.globalAlpha = intensity;
+    ctx.strokeStyle = COLORS.grid;
+    ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(x, PAD.top);
     ctx.lineTo(x, height - PAD.bottom);
     ctx.stroke();
     ctx.fillStyle = COLORS.label;
-    ctx.fillText(`${s}s`, x, height - PAD.bottom + 16);
+    ctx.fillText(`${Math.round(s)}s`, x, height - PAD.bottom + 16);
   }
-
-  return { xFor, yFor, baseY, windowMs };
 }
 
+/**
+ * Traces the curve as a dense polyline. Because xFor is linear in t, a fixed
+ * ~1px step in x maps to an even step in t, so straight segments at that
+ * density are visually indistinguishable from the exact analytic curve — no
+ * Bézier control-point overshoot, no faceting, no kink. The path is left open
+ * so callers can stroke it or close it into the area fill.
+ */
 function traceCurve(
   ctx: CanvasRenderingContext2D,
   scale: Scale,
@@ -478,36 +581,17 @@ function traceCurve(
   multiplier: number,
 ) {
   const curveWidth = Math.max(1, scale.xFor(elapsedMs) - PAD.left);
-  const STEPS = Math.max(96, Math.ceil(curveWidth / 3));
-  const points: Array<{ x: number; y: number }> = [];
+  const steps = Math.max(2, Math.ceil(curveWidth));
 
-  for (let i = 0; i <= STEPS; i++) {
-    const t = (i / STEPS) * elapsedMs;
-    points.push({
-      x: scale.xFor(t),
-      y: scale.yFor(smoothTakeoffMultiplierAt(t, multiplier)),
-    });
-  }
-
-  const first = points[0];
-  if (!first) {
-    return;
-  }
-
-  ctx.moveTo(first.x, first.y);
-
-  for (let i = 1; i < points.length - 1; i++) {
-    const current = points[i] as { x: number; y: number };
-    const next = points[i + 1] as { x: number; y: number };
-    const midX = (current.x + next.x) / 2;
-    const midY = (current.y + next.y) / 2;
-    ctx.quadraticCurveTo(current.x, current.y, midX, midY);
-  }
-
-  const last = points[points.length - 1];
-  if (last && points.length > 1) {
-    const previous = points[points.length - 2] as { x: number; y: number };
-    ctx.quadraticCurveTo(previous.x, previous.y, last.x, last.y);
+  for (let i = 0; i <= steps; i++) {
+    const t = (i / steps) * elapsedMs;
+    const x = scale.xFor(t);
+    const y = scale.yFor(smoothTakeoffMultiplierAt(t, multiplier));
+    if (i === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
   }
 }
 

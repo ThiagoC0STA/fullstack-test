@@ -56,6 +56,11 @@ services:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin
       KC_HEALTH_ENABLED: "true"
+      # Pin the issuer to localhost so tokens minted over the back channel
+      # (the BFF calling keycloak:8080) still carry iss=localhost:8080, which
+      # is what the browser uses and what the services validate against.
+      KC_HOSTNAME: http://localhost:8080
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
     volumes:
       - ./docker/keycloak:/opt/keycloak/data/import:ro
     healthcheck:
@@ -178,8 +183,16 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+    environment:
+      # BFF back-channel targets (server -> services, by Docker service name).
+      # The browser-facing NEXT_PUBLIC_* values stay at localhost, baked in
+      # at build time, so redirects land back on the evaluator's machine.
+      KEYCLOAK_INTERNAL_URL: http://keycloak:8080
+      API_INTERNAL_URL: http://kong:8000
     depends_on:
       kong:
+        condition: service_healthy
+      keycloak:
         condition: service_healthy
 
 volumes:

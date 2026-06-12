@@ -146,6 +146,44 @@ describe("RoundEngine lifecycle", () => {
   });
 });
 
+describe("RoundEngine server-side auto cashout", () => {
+  test("cashes out a bet at its target during a tick and stages the credit", async () => {
+    const round = Round.openBetting({
+      serverSeed: "seed-a",
+      chainIndex: 5,
+      bettingWindowMs: BETTING_WINDOW_MS,
+      now: NOW,
+    });
+    const bet = round.placeBet({
+      playerId: "auto-player",
+      username: "auto",
+      amountCents: "1000",
+      autoCashoutHundredths: 200,
+      now: NOW,
+    });
+    bet.confirmDebit();
+    round.start(NOW);
+    harness.store.set(round);
+
+    // 12s in the curve is ~2.06x: past the 2.00x target, before the crash
+    harness.clock.advance(12_000);
+    await harness.engine.tick();
+
+    expect(bet.status).toBe("cashed_out");
+    expect(bet.cashoutMultiplierHundredths).toBe(200);
+    const credit = harness.outbox.messages.find(
+      (entry) =>
+        entry.routingKey === "wallet.credit.requested" &&
+        (entry.message.payload as { reason: string }).reason === "cashout_payout",
+    );
+    expect(credit).toBeDefined();
+    expect((credit?.message.payload as { amountCents: string }).amountCents).toBe(
+      "2000",
+    );
+    expect(harness.broadcast.names()).toContain(WS_EVENTS.BET_CASHED_OUT);
+  });
+});
+
 describe("RoundEngine.recoverUnfinishedRounds", () => {
   test("voids interrupted rounds and refunds bets that were debited", async () => {
     const interrupted = Round.openBetting({

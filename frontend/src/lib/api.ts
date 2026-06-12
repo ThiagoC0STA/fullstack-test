@@ -8,7 +8,6 @@ import type {
   WalletView,
 } from "@crash/contracts";
 import { useAuthStore } from "@/stores/auth-store";
-import { appConfig } from "./config";
 
 export class ApiError extends Error {
   constructor(
@@ -26,22 +25,28 @@ interface RequestOptions {
   auth?: boolean;
 }
 
+/**
+ * All traffic goes through the same-origin BFF proxy (`/api/proxy/*`).
+ * The access token lives in an httpOnly cookie the browser attaches
+ * automatically, so this client never reads or carries it.
+ */
+const PROXY_BASE = "/api/proxy";
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  // Skip the round trip when the UI already knows there is no session; the
+  // proxy would just return 401 anyway.
+  if (options.auth && useAuthStore.getState().status !== "authenticated") {
+    throw new ApiError("Entre para continuar", 401);
+  }
+
   const headers: Record<string, string> = {};
   if (options.body) {
     headers["Content-Type"] = "application/json";
   }
-  if (options.auth) {
-    const token = useAuthStore.getState().accessToken;
-    if (!token) {
-      throw new ApiError("Entre para continuar", 401);
-    }
-    headers.Authorization = `Bearer ${token}`;
-  }
 
   let response: Response;
   try {
-    response = await fetch(`${appConfig.apiUrl}${path}`, {
+    response = await fetch(`${PROXY_BASE}${path}`, {
       method: options.method ?? "GET",
       headers,
       body: options.body ? JSON.stringify(options.body) : undefined,
@@ -68,7 +73,11 @@ export const api = {
     request<PlayerBetHistoryItem[]>(`/games/bets/me?page=1&limit=${limit}`, {
       auth: true,
     }),
-  placeBet: (amountCents: string) =>
-    request<BetView>("/games/bet", { method: "POST", auth: true, body: { amountCents } }),
+  placeBet: (amountCents: string, autoCashoutHundredths?: number | null) =>
+    request<BetView>("/games/bet", {
+      method: "POST",
+      auth: true,
+      body: { amountCents, autoCashoutHundredths: autoCashoutHundredths ?? null },
+    }),
   cashOut: () => request<BetView>("/games/bet/cashout", { method: "POST", auth: true }),
 };

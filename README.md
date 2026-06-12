@@ -35,7 +35,9 @@ Zero passos manuais: realm do Keycloak importado no boot (usuário de teste com 
 
 **Bônus**
 - ✅ **Outbox/Inbox transacional** nos dois services (at-least-once delivery, exactly-once processing)
-- ✅ **Auto cashout** (multiplicador alvo na UI)
+- ✅ **Dead-letter queues**: mensagem malformada é rejeitada sem requeue (`Nack(false)`), cai numa DLQ por fila e gera log de alarme em nível `error` (falha transitória continua com requeue, preservando a saga)
+- ✅ **Auto cashout server-side**: o alvo é registrado na aposta e o próprio engine executa o saque ao atingir o multiplicador, sem depender de latência do cliente
+- ✅ **Auth via BFF**: tokens OIDC em cookies `httpOnly`, fora do alcance de JavaScript (proxy same-origin + refresh server-side)
 - ✅ **Efeitos sonoros** sintetizados via WebAudio (zero assets de áudio)
 - ✅ **Fórmula da curva exibida na UI** (`m(t) = ⌊100·e^(0.00006t)⌋`)
 - ✅ **Verificação provably fair no navegador** via WebCrypto (clique em qualquer rodada do histórico)
@@ -148,12 +150,10 @@ docker/                  # kong.yml, realm do Keycloak, init do Postgres
 - **Queries parametrizadas** em todo lugar (MikroORM + placeholders no SQL cru). Sem concatenação de string em query.
 - **CORS restrito** ao frontend; **rate limiting** por IP no Kong (20/s, 600/min); **security headers** no Next (`nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`).
 
-**Trade-off consciente — tokens OIDC em `localStorage`:** o oidc-client-ts guarda os tokens no `localStorage`, o que os expõe a roubo via XSS. O padrão ouro para dinheiro real é o **BFF pattern**: um backend-for-frontend guarda o token e entrega ao browser apenas um cookie de sessão `httpOnly` + `SameSite`, inacessível a JavaScript. Não foi feito aqui porque é uma re-arquitetura do fluxo de auth (proxy de sessão, CSRF token, refresh server-side) que ultrapassa o escopo do desafio. A mitigação atual é a superfície de XSS reduzida (React escapa output por padrão, sem `dangerouslySetInnerHTML`, security headers). **Em produção, BFF seria obrigatório.**
+**Auth via BFF pattern (cookies `httpOnly`):** o token OIDC nunca chega ao JavaScript do browser. O fluxo authorization code + PKCE é finalizado no servidor Next (`/api/auth/*`): o `code_verifier` e o `state` ficam em cookies `httpOnly` durante o handshake, a troca do code por tokens acontece no back channel (servidor para Keycloak) e os tokens resultantes ficam em cookies `httpOnly` + `SameSite=Lax`, inacessíveis a XSS. Toda chamada autenticada passa pelo proxy same-origin (`/api/proxy/*`), que anexa o `Bearer` lido do cookie e faz refresh transparente quando o access token expira. O cookie `SameSite=Lax` não viaja em POST cross-site, então também cobre CSRF. O browser só descobre quem é via `/api/auth/session`, que devolve `playerId`/`username` derivados do token no servidor.
 
 ## Limitações conhecidas / evolução
 
 - Engine single-instance (ver trade-offs). Caminho: leader election ou particionamento de rodadas.
-- Sem DLQ: mensagem malformada é descartada com log (`nack` sem requeue). Caminho: DLX + alarme.
-- Auto cashout dispara do cliente (latência de rede). Caminho: alvo registrado na aposta e executado pelo engine.
 - Sem CSP estrita com nonce por request (security headers básicos aplicados). Caminho: middleware Next com nonce.
 - Credenciais de infra hardcoded (`admin/admin`, `player123`) — valores de dev local do enunciado; produção usaria secrets manager.

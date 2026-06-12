@@ -3,12 +3,17 @@ import {
   BET_LIMITS,
   calculatePayoutCents,
   compareCents,
+  isAutoCashoutTarget,
   isCents,
   type BetStatus,
   type CentsString,
   type MultiplierHundredths,
 } from "@crash/contracts";
-import { InvalidBetAmountError, InvalidBetTransitionError } from "./errors";
+import {
+  InvalidAutoCashoutTargetError,
+  InvalidBetAmountError,
+  InvalidBetTransitionError,
+} from "./errors";
 
 interface BetProps {
   id: string;
@@ -18,6 +23,7 @@ interface BetProps {
   amountCents: CentsString;
   status: BetStatus;
   cashoutMultiplierHundredths: MultiplierHundredths | null;
+  autoCashoutHundredths: MultiplierHundredths | null;
   payoutCents: CentsString | null;
   placedAt: Date;
 }
@@ -35,6 +41,7 @@ export class Bet {
   amountCents: CentsString;
   status: BetStatus;
   cashoutMultiplierHundredths: MultiplierHundredths | null;
+  autoCashoutHundredths: MultiplierHundredths | null;
   payoutCents: CentsString | null;
   placedAt: Date;
 
@@ -46,6 +53,7 @@ export class Bet {
     this.amountCents = props.amountCents;
     this.status = props.status;
     this.cashoutMultiplierHundredths = props.cashoutMultiplierHundredths;
+    this.autoCashoutHundredths = props.autoCashoutHundredths;
     this.payoutCents = props.payoutCents;
     this.placedAt = props.placedAt;
   }
@@ -55,9 +63,14 @@ export class Bet {
     playerId: string;
     username: string;
     amountCents: CentsString;
+    autoCashoutHundredths?: MultiplierHundredths | null;
     now: Date;
   }): Bet {
     Bet.assertAmountWithinLimits(input.amountCents);
+    const autoCashoutHundredths = input.autoCashoutHundredths ?? null;
+    if (autoCashoutHundredths !== null) {
+      Bet.assertAutoCashoutTarget(autoCashoutHundredths);
+    }
     return new Bet({
       id: randomUUID(),
       roundId: input.roundId,
@@ -66,6 +79,7 @@ export class Bet {
       amountCents: input.amountCents,
       status: "pending_debit",
       cashoutMultiplierHundredths: null,
+      autoCashoutHundredths,
       payoutCents: null,
       placedAt: input.now,
     });
@@ -80,6 +94,12 @@ export class Bet {
     }
     if (compareCents(amountCents, BET_LIMITS.MAX_CENTS) > 0) {
       throw new InvalidBetAmountError(amountCents, "above the 1000.00 maximum");
+    }
+  }
+
+  static assertAutoCashoutTarget(target: number): void {
+    if (!isAutoCashoutTarget(target)) {
+      throw new InvalidAutoCashoutTargetError(target);
     }
   }
 

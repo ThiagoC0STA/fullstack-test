@@ -2,6 +2,7 @@ import {
   createMessage,
   ROUTING_KEYS,
   WS_EVENTS,
+  type BetCashedOutEvent,
   type MultiplierTickEvent,
   type RoundBettingStartedEvent,
   type RoundCrashedEvent,
@@ -10,6 +11,7 @@ import {
 } from "@crash/contracts";
 import { Round } from "../domain/round";
 import { CurrentRoundStore } from "./current-round.store";
+import { toBetView } from "./views";
 import type {
   ClockPort,
   GameBroadcastPort,
@@ -109,12 +111,56 @@ export class RoundEngine {
       return;
     }
 
+    await this.settleAutoCashouts(round, now);
+
     const tick: MultiplierTickEvent = {
       roundId: round.id,
       multiplierHundredths: round.multiplierAt(now),
       elapsedMs: now.getTime() - (round.startedAt as Date).getTime(),
     };
     this.broadcast.emit(WS_EVENTS.MULTIPLIER_TICK, tick);
+  }
+
+  /**
+   * Server-side auto cashout: bets whose target the live multiplier has
+   * reached are cashed out by the engine itself, paid exactly at their
+   * target. Each payout credit is staged in the same transaction as the
+   * bet write; on failure the in-memory cashout is reverted so the next
+   * tick retries (the predetermined crash instant still applies).
+   */
+  private async settleAutoCashouts(round: Round, now: Date): Promise<void> {
+    const fired = round.autoCashOutReady(now);
+    if (fired.length === 0) {
+      return;
+    }
+    try {
+      await this.runner.run(async (tx) => {
+        for (const bet of fired) {
+          await tx.rounds.persistBet(bet);
+          const payload: WalletCreditRequestedPayload = {
+            playerId: bet.playerId,
+            roundId: round.id,
+            betId: bet.id,
+            amountCents: bet.payoutCents as string,
+            reason: "cashout_payout",
+          };
+          await tx.outbox.add(
+            createMessage(ROUTING_KEYS.WALLET_CREDIT_REQUESTED, payload, now),
+            ROUTING_KEYS.WALLET_CREDIT_REQUESTED,
+          );
+        }
+      });
+    } catch (error: unknown) {
+      for (const bet of fired) {
+        bet.revertCashOut();
+      }
+      throw error;
+    }
+
+    for (const bet of fired) {
+      const event: BetCashedOutEvent = { roundId: round.id, bet: toBetView(bet) };
+      this.broadcast.emit(WS_EVENTS.BET_CASHED_OUT, event);
+    }
   }
 
   private async openNextRound(now: Date): Promise<void> {

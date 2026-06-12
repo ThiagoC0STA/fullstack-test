@@ -34,6 +34,15 @@ const MAX_PAGE_LIMIT = 50;
 export class PlaceBetRequestDto {
   @ApiProperty({ example: "1000", description: "Bet amount in integer cents" })
   amountCents!: string;
+
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    example: 200,
+    description:
+      "Optional auto cashout target in hundredths (200 = 2.00x); the engine cashes out at this multiplier server-side",
+  })
+  autoCashoutHundredths?: number | string | null;
 }
 
 function parsePagination(page?: string, limit?: string): { page: number; limit: number } {
@@ -131,10 +140,16 @@ export class GamesController {
     @CurrentPlayer() player: AuthenticatedPlayer,
     @Body() body: PlaceBetRequestDto,
   ): Promise<ApiResponse<BetView>> {
+    const rawTarget = body.autoCashoutHundredths;
+    const autoCashoutHundredths =
+      rawTarget === undefined || rawTarget === null || rawTarget === ""
+        ? null
+        : Number(rawTarget);
     const bet = await this.placeBetUseCase.execute({
       playerId: player.id,
       username: player.username,
       amountCents: String(body.amountCents ?? ""),
+      autoCashoutHundredths,
     });
     return { success: true, data: bet, error: null };
   }
